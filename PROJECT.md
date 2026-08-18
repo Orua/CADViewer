@@ -19,7 +19,7 @@ Goldenluck 是部署目标，不是本项目源码仓库。
 2. 将下列运行文件同步至 `F:\Project\Goldenluck\Web\cad-viewer\`：
    - `index.html`
    - `viewer.js`
-   - `viewer-config.js`
+   - `viewer-config.js`（由源码中的 `viewer-config.local.js` 复制生成，不直接使用公开版配置）
    - `font-engine.js`
    - `vendor/shx-parser-LICENSE.txt`
    - `parser-worker.js`
@@ -37,10 +37,13 @@ Goldenluck 是部署目标，不是本项目源码仓库。
 ## `cad-data` 字体资料
 
 - 本地字体目录统一为小写 `cad-data/fonts/`。
-- `cad-viewer/viewer-config.js` 提供 `dataBaseUrl`。本地访问默认使用相对路径 `../cad-data/`；GitHub Pages 或其他非本机站点默认使用上游绝对地址 `https://mlightcad.gitlab.io/cad-data/`。
+- `cad-viewer/viewer-config.js` 提供 `dataBaseUrl`。公开仓库在本机开发地址使用 `../cad-data/`，在 GitHub Pages 和其他公开地址使用上游绝对地址 `https://mlightcad.gitlab.io/cad-data/`。
+- Goldenluck 部署不是通过主机名判断：每次部署都必须把源码 `viewer-config.local.js` 复制为部署副本的 `viewer-config.js`。这样本机和局域网访问同一部署副本时都只使用服务器本地 DATA，不依赖公网字体服务。
+- 公开仓库保留 CDN 默认值；不得把 Goldenluck 部署副本的本地默认值反向覆盖公开配置。
 - 设置优先级为：URL 的 `?data=<地址>`、页面预先定义的 `window.CAD_VIEWER_CONFIG.dataBaseUrl`、环境默认值。地址可以指向 `cad-data/` 根目录，也可以直接指向 `fonts/`。
 - 固定部署可在加载 `viewer-config.js` 前设置：`window.CAD_VIEWER_CONFIG = { dataBaseUrl: '/CAD-DATA/' }`。临时测试则使用 URL 编码后的 `?data=` 参数。
 - 字体目录至少需要 `fonts/fonts.json` 以及清单引用的字体文件；跨域地址必须允许 CORS。
 - 所有图元完成后才请求 `<dataBaseUrl>/fonts/fonts.json`，并只下载当前图纸文字样式需要的字体和 `simsun` 回退字体；SHX 以线段绘制，TTF/WOFF 通过 `FontFace` 注册后重绘文字。
-- 该目录含 100 个文件、约 48.69 MiB，且没有随附许可证；其中包括疑似 Microsoft/AutoCAD 字体。公开仓库保持忽略，直到每个可再分发文件的来源与许可证被确认。
+- `cad-data/open/` 是公开示例路由，只包含 3 个来自 Google Fonts 官方仓库、随附 OFL 1.1 的小字体、精简清单和来源哈希；可用 `?data=/cad-data/open/` 测试。
+- 本机完整 `cad-data/fonts/` 含 100 个文件、约 48.69 MiB，且没有随附许可证；其中包括疑似 Microsoft/AutoCAD 字体。该目录继续忽略，直到每个可再分发文件的来源与许可证被确认。
 - 业务 DWG 永远不提交；公开仓库不提交来源或许可证不明确的本地字体文件。

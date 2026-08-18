@@ -24,3 +24,24 @@ cad-viewer/viewer-runtime.iife.js
 cad-viewer/worker-cache-version.js
 cad-viewer/workers/experimental/
 cad-viewer/pg14791-parser-diagnostic.html
+
+# Small, license-cleared public CAD data sample. Keep the full local font set ignored.
+!cad-data/
+cad-data/*
+!cad-data/README.md
+!cad-data/open/
+cad-data/open/*
+!cad-data/open/README.md
+!cad-data/open/index.html
+!cad-data/open/manifest.json
+!cad-data/open/fonts/
+cad-data/open/fonts/*
+!cad-data/open/fonts/fonts.json
+!cad-data/open/fonts/Basic-Regular.ttf
+!cad-data/open/fonts/TenorSans-Regular.ttf
+!cad-data/open/fonts/VT323-Regular.ttf
+!cad-data/open/licenses/
+cad-data/open/licenses/*
+!cad-data/open/licenses/Basic-OFL.txt
+!cad-data/open/licenses/TenorSans-OFL.txt
+!cad-data/open/licenses/VT323-OFL.txt
