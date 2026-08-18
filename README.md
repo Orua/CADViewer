@@ -1,94 +1,156 @@
-﻿# CADViewer：大型 DWG 渐进式浏览器查看器
+# CADViewer：大型 DWG 渐进式浏览器查看器
 
-这是一个从 [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer) 演化出来的只读 DWG 查看器，重点解决大型图纸在浏览器中首次显示慢、JavaScript 内存占用高和主线程长时间无响应的问题。
+CADViewer 是从 [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer) 演化出的纯前端只读查看器，目标是在浏览器内更快地打开大型 DWG，并降低 JavaScript 主线程的等待时间和内存压力。
 
-图纸由浏览器中的 Web Worker 与 WebAssembly 本地解析。通过文件选择器打开的 DWG 不会上传到业务服务器；若使用 `?file=`，页面只会读取当前站点允许访问的同源静态文件。
+本地文件由 Web Worker 与 LibreDWG WebAssembly 在浏览器内解析，不会上传到业务服务器。通过 `?file=` 打开的图纸只从当前站点读取同源静态文件。
 
-## 与原项目的主要技术差异
+## 主要能力
+
+- 分批解析并渐进显示大型 DWG，不必等待完整 JavaScript CAD 数据库建立。
+- 先显示轮廓，再补充曲线、尺寸、文字、填充和块引用。
+- 支持 SHX、TTF、OTF、WOFF 字体按需加载；字体不会阻塞首屏图形。
+- 支持本地文件、同源 `?file=` 地址、最近打开记录。
+- 支持平移、滚轮缩放、全图、框选放大、图纸列表显隐和深浅底色。
+- 修复常见 CAD 转义字符、文字对齐、颜色继承和路径错误连线问题。
+
+## 快速使用
+
+将整个 `cad-viewer/` 目录放到静态网站，并确保服务器正确返回 `.wasm`、`.dwg`、`.dxf`、`.shx` 和字体文件。入口为：
+
+```text
+/cad-viewer/
+```
+
+打开同源图纸：
+
+```text
+/cad-viewer/?file=/CAD-DATA/data/example.dwg
+```
+
+临时指定字体资料地址：
+
+```text
+/cad-viewer/?data=%2FCAD-DATA%2F
+```
+
+`file` 和 `data` 参数都应进行 URL 编码。
+
+## 字体 DATA 设置
+
+字体路径由 [`cad-viewer/viewer-config.js`](cad-viewer/viewer-config.js) 的 `dataBaseUrl` 控制。该地址可以指向 `cad-data` 根目录，也可以直接指向 `fonts/` 目录。
+
+默认规则：
+
+- 本地访问：`../cad-data/`
+- GitHub Pages 或其他非本机站点：`https://mlightcad.gitlab.io/cad-data/`
+
+推荐目录结构：
+
+```text
+cad-data/
+└─ fonts/
+   ├─ fonts.json
+   ├─ simsun.woff
+   ├─ txt.shx
+   └─ ...
+```
+
+查看器会在所有图元显示完毕后读取 `<dataBaseUrl>/fonts/fonts.json`，根据 DWG 文字样式只下载当前图纸需要的字体，然后重新渲染文字。字体清单没有对应字体或下载失败时，继续使用系统字体，不影响图纸打开。
+
+有三种设置方式，优先级从高到低如下：
+
+1. 查询参数，适合临时测试：
+
+   ```text
+   /cad-viewer/?data=https%3A%2F%2Fexample.com%2Fcad-data%2F
+   ```
+
+2. 页面加载配置脚本前设置全局配置，适合固定部署：
+
+   ```html
+   <script>
+     window.CAD_VIEWER_CONFIG = {
+       dataBaseUrl: '/CAD-DATA/'
+     };
+   </script>
+   <script src="./viewer-config.js"></script>
+   ```
+
+3. 直接修改 `viewer-config.js` 的默认地址。
+
+跨域字体地址必须允许浏览器 CORS 访问。为避免相对地址解析错误，建议地址以 `/` 结尾；代码也会自动补齐结尾斜杠。
+
+## 渐进解析流程
+
+1. 主线程把 DWG `ArrayBuffer` 转移给 `parser-worker.js`，避免复制整份文件。
+2. Worker 中的 LibreDWG WASM 解码 DWG。
+3. `convertForViewer` 每 2,000 个图元输出一个批次，只保留显示所需数据和轻量文字样式表。
+4. 主线程先绘制 LINE、LWPOLYLINE 等轮廓并适配视口。
+5. 随后补充圆弧/曲线、尺寸/引线、文字、填充边界和块引用。
+6. 文字先用系统字体快速显示，再校正对齐点、附着点、宽度系数和镜像标志。
+7. 所有图元完成后才载入所需 SHX/TTF/WOFF 字体，并最终重绘文字。
+
+## 与原项目的主要差异
 
 | 项目 | 原始 `mlightcad/cad-viewer` | 当前版本 |
 | --- | --- | --- |
-| 运行核心 | 完整场景及插件运行时 | Web Worker + LibreDWG WASM + Canvas 2D 渐进预览 |
-| 定位 | 完整 CAD Viewer 框架，包含较完整的数据模型、渲染和扩展能力 | 面向大型 DWG 快速预览的独立只读查看器 |
-| 解析结果 | 将 DWG 转换为较完整的 JavaScript CAD 数据库 | `convertForViewer` 只提取可视图元，跳过编辑表、字典、布局等非首屏数据 |
-| 数据传递 | 解析完成后再交给查看器组织场景 | Web Worker 每 2,000 个图元发送一个批次，主线程收到即可消费 |
-| 首次显示 | 需要等待更多数据结构和场景准备完成 | 轮廓线到达后立即适配视口并显示首屏 |
-| 渲染方式 | 原项目的 Three.js/场景对象体系 | Canvas 2D + `Path2D`，按颜色和阶段合并路径，减少对象数量 |
-| 内存策略 | 保留更完整的 CAD 数据，适合后续编辑和查询 | Worker 持有 DWG 原生结构，主线程只保存绘图路径和少量文字；完成后调用 `dwg_free` |
-| 块引用 | 完整场景节点方式处理 | 先缓存块定义，再按每批 250 个 INSERT/DIMENSION 渐进组合 |
-| 文字 | 原渲染器统一完成字体、布局和锚点处理 | 先按插入点快速显示，再依据 TEXT 对齐点和 MTEXT 九宫格锚点二次校正 |
-| 功能范围 | 查看、编辑及插件扩展能力更完整 | 聚焦平移、缩放、全图、打开文件、历史记录和同源 URL 打开 |
+| 定位 | 完整 CAD Viewer 框架 | 面向大型 DWG 快速预览的独立只读查看器 |
+| 数据模型 | 构建较完整 JavaScript CAD 数据库 | 只提取可视图元、图层颜色、块定义和文字样式 |
+| 数据传递 | 完成更多场景准备后统一处理 | Worker 分批输出，主线程收到即可消费 |
+| 渲染 | Three.js 场景及插件体系 | Canvas 2D + `Path2D` 分阶段合并绘制 |
+| 内存策略 | 保留完整场景和更多 CAD 数据 | 主线程仅保存绘图路径及少量文字，完成后释放 DWG 原生结构 |
+| 块引用 | 完整场景节点 | 缓存块定义，再分批组合 INSERT/DIMENSION |
+| 字体 | 原文字渲染体系负责字体和布局 | 首屏使用系统字体，图元完成后按需下载字体并重绘 |
+| 功能范围 | 查看、编辑和扩展能力更完整 | 聚焦打开、快速查看、历史、平移和缩放 |
 
-## 渐进解析与显示流程
+## 显示正确性修复
 
-1. 主线程把 `ArrayBuffer` 转移给 `parser-worker.js`，避免复制整份 DWG。
-2. Worker 中的 `libredwg-web.wasm` 解码 DWG。
-3. `convertForViewer` 逐批输出模型空间、块定义和必要的图层颜色信息。
-4. 主线程先绘制 LINE、LWPOLYLINE 等轮廓图元，让大图尽快可见。
-5. 随后依次补充圆弧/曲线、尺寸/引线、文字、填充边界和块引用。
-6. 文字先快速显示，再执行一次纯 Canvas 重绘，校正 `halign`、`valign`、`endPoint`、`attachmentPoint`、宽度系数和镜像标志；不会重新运行 WASM。
-
-## 针对显示正确性的修复
-
-- ARC、ELLIPSE 及 HATCH 曲线先移动到数学起点，避免不同图元被 Canvas 自动连成穿图白线。
-- SPLINE 按 knots、weights 和控制点进行 B-spline 采样，不再直接连接控制点。
+- ARC、ELLIPSE、HATCH 曲线先移动到数学起点，避免 Canvas 自动连接不同图元。
+- SPLINE 根据 knots、weights 和控制点进行 B-spline 采样。
 - 解析 `\U+XXXX`、`%%C`、`%%D`、`%%P` 和常见 MTEXT 控制码。
-- 读取真彩色、ACI、ByLayer 与 ByBlock 颜色，并在块引用中继续继承颜色。
-- TEXT 使用对齐点及水平/垂直对齐；MTEXT 使用九宫格附着点和多行高度校正位置。
-
-## 界面与打开方式
-
-- 保留原查看器的界面结构，并使用独立 Canvas 渲染核心。
-- 左侧列表显示“当前：文件名”和最近打开记录。
-- 本地历史只保存文件名；浏览器不会保存可再次读取的本机完整路径，因此点击本地历史时会重新弹出文件选择器。
-- 支持 `?file=/path/to/drawing.dwg` 读取当前站点的同源图纸。
-- 载入时先显示 GL 标识，首批轮廓出现后进入渐进显示。
-
-部署时只需提供静态文件服务，并正确返回 `.wasm`、`.dwg`、`.dxf` 和 `.shx`。查看器入口为 `/cad-viewer/`。
+- 读取真彩色、ACI、ByLayer 与 ByBlock 颜色，并在块引用中继承颜色。
+- TEXT 使用对齐点和水平/垂直对齐；MTEXT 使用九宫格附着点校正位置。
+- SHX 字体使用线段绘制；TTF/OTF/WOFF 通过浏览器 `FontFace` 注册。
 
 ## 关键文件
 
-- `cad-viewer/viewer.js`：渐进消费、块组合、Canvas 渲染、文字二次校正和交互。
+- `cad-viewer/index.html`：页面、历史列表和查看工具栏。
+- `cad-viewer/viewer.js`：渐进消费、块组合、Canvas 渲染、文字重绘和交互。
+- `cad-viewer/viewer-config.js`：字体 DATA 地址配置。
+- `cad-viewer/font-engine.js`：浏览器直接加载的字体引擎包。
+- `cad-viewer/src/font-engine-entry.js`：字体引擎源码入口。
 - `cad-viewer/parser-worker.js`：Worker 生命周期、WASM 调用和批次消息。
-- `cad-viewer/bindings/libredwg-web.js`：LibreDWG JavaScript 绑定及 `convertForViewer`。
-- `cad-viewer/wasm/`：浏览器运行所需的 WASM 加载脚本和二进制。
-- `cad-viewer/online-open.js`：同源 QueryString 打开、当前图纸和最近历史。
+- `cad-viewer/bindings/libredwg-web.js`：LibreDWG JavaScript 绑定和 `convertForViewer`。
+- `cad-viewer/wasm/`：LibreDWG WASM 加载脚本和二进制。
+- `cad-viewer/online-open.js`：同源 QueryString 打开及最近历史。
 
 ## 当前限制
 
-- 这是只读预览器，不保留原项目的编辑、选择和插件能力。
-- Canvas 使用系统字体代替图纸缺失的 SHX/TTF 时，字形宽度仍可能与 CAD 软件存在差异。
-- 外部 IMAGE、部分代理实体和少见自定义实体可能无法显示。
-- 为控制内存，不会构建完整 JavaScript CAD 数据库；需要实体属性查询或编辑时应使用原项目。
+- 这是只读预览器，不包含原项目的编辑、实体选择和插件体系。
+- 字体仓库缺少图纸字体时会退回系统字体，字形宽度可能与 CAD 软件不同。
+- 外部 IMAGE、代理实体和少见自定义实体可能无法显示。
+- 为控制内存，不构建完整 JavaScript CAD 数据库；实体属性查询或编辑仍应使用原项目。
 
-## 上游、Fork 与同步设置
+## 仓库与分支
 
-最早的源码仓库：
-
-- Viewer：[mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer)
+- 当前仓库：[Orua/CADViewer](https://github.com/Orua/CADViewer)
+- 上游 Viewer：[mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer)
 - DWG WebAssembly 绑定：[mlightcad/libredwg-web](https://github.com/mlightcad/libredwg-web)
 - 底层解析器：[LibreDWG/libredwg](https://github.com/LibreDWG/libredwg)
 
-当前仓库是 `mlightcad/cad-viewer` 的正式 GitHub Fork。分支职责如下：
+分支职责：
 
-- `main`：保留上游原始分支，用于查看和同步 `mlightcad/cad-viewer` 的更新。
-- `large-dwg-viewer`：当前大型 DWG 渐进查看器，并设为仓库默认分支。
+- `main`：保留上游原始分支，用于跟踪上游更新。
+- `large-dwg-viewer`：当前大型 DWG 渐进查看器，也是仓库默认分支。
 
-本地仓库使用 `origin` 指向本 Fork，使用 `upstream` 指向原项目：
+本地 `origin` 指向当前 Fork，`upstream` 指向原项目。不要把 `upstream/main` 直接合并到 `large-dwg-viewer`；应先获取上游提交，再选择性移植需要的修复。
 
-```bash
-git remote add upstream https://github.com/mlightcad/cad-viewer.git
-git fetch upstream
-```
+Goldenluck 本地测试、局域网部署和文件范围见 [`PROJECT.md`](PROJECT.md)。
 
-项目定位、Goldenluck 本地测试和 FTP 部署规则见 [PROJECT.md](PROJECT.md)。
-
-由于 `large-dwg-viewer` 已经从 TypeScript/Three.js 工程重构成独立静态查看器，不建议把 `upstream/main` 直接合并进该分支；更适合先 `git fetch upstream`，再对照具体提交选择性移植修复。
-
-## 开源组件与许可证
+## 许可证与数据
 
 - `mlightcad/cad-viewer` 使用 MIT License。
-- DWG 解析使用 `mlightcad/libredwg-web` 和 GPL-3.0-or-later 的 LibreDWG。
-- 公开或再分发包含的 LibreDWG WASM 时，需要继续满足相应许可证及源代码提供义务。
-
-公开仓库不包含业务 DWG、用户打开记录、备份、构建缓存或测试图纸。
+- DWG 解析依赖 `mlightcad/libredwg-web` 和 GPL-3.0-or-later 的 LibreDWG；再分发 WASM 时需继续满足其许可证要求。
+- SHX 解析器许可证见 `cad-viewer/vendor/shx-parser-LICENSE.txt`。
+- 公开仓库不包含业务 DWG、浏览器历史、备份、构建缓存或测试图纸。
+- 本地 `cad-data` 中部分字体来源和再分发许可证不明确，因此不提交到公开仓库；公开环境默认使用上游字体地址。

@@ -8,6 +8,16 @@ const metrics = document.querySelector('#metrics');
 const centerOpenButton = document.querySelector('#centerOpenButton');
 const emptyState = document.querySelector('#emptyState');
 const loadingOverlay = document.querySelector('#mlcad-loading');
+const toolOpenButton = document.querySelector('#toolOpenButton');
+const toolPanButton = document.querySelector('#toolPanButton');
+const toolFitButton = document.querySelector('#toolFitButton');
+const toolZoomWindowButton = document.querySelector('#toolZoomWindowButton');
+const toolSidebarButton = document.querySelector('#toolSidebarButton');
+const toolBackgroundButton = document.querySelector('#toolBackgroundButton');
+const fileSidebarColumn = document.querySelector('#fileSidebarColumn');
+const zoomWindow = document.querySelector('#zoomWindow');
+const configuredDataBaseUrl = window.CAD_VIEWER_CONFIG?.dataBaseUrl;
+window.cadViewerFontState = { dataBaseUrl: configuredDataBaseUrl, phase: 'idle' };
 
 const STAGES = [
   { key: 'outline', label: '轮廓直线' },
@@ -34,9 +44,46 @@ let entityCount = 0;
 let unsupportedCount = 0;
 let unresolvedCount = 0;
 let layerColors;
+let fontEngine;
 let loadGeneration = 0;
 let drag;
 let hasOpenedFile = false;
+let interactionMode = 'pan';
+let zoomWindowStart;
+let backgroundColor = '#090b0e';
+
+function setInteractionMode(mode) {
+  interactionMode = mode;
+  toolPanButton.classList.toggle('is-active', mode === 'pan');
+  toolZoomWindowButton.classList.toggle('is-active', mode === 'zoom-window');
+  canvas.style.cursor = mode === 'zoom-window' ? 'crosshair' : 'grab';
+}
+
+function setZoomWindowBox(start, end) {
+  const left = Math.min(start.x, end.x);
+  const top = Math.min(start.y, end.y);
+  zoomWindow.style.left = `${left}px`;
+  zoomWindow.style.top = `${top}px`;
+  zoomWindow.style.width = `${Math.abs(end.x - start.x)}px`;
+  zoomWindow.style.height = `${Math.abs(end.y - start.y)}px`;
+  zoomWindow.style.display = 'block';
+}
+
+function zoomToWindow(start, end) {
+  const width = Math.abs(end.x - start.x);
+  const height = Math.abs(end.y - start.y);
+  if (width < 8 || height < 8) return;
+  const worldLeft = (Math.min(start.x, end.x) - camera.x) / camera.scale;
+  const worldRight = (Math.max(start.x, end.x) - camera.x) / camera.scale;
+  const worldTop = (camera.y - Math.min(start.y, end.y)) / camera.scale;
+  const worldBottom = (camera.y - Math.max(start.y, end.y)) / camera.scale;
+  const worldWidth = Math.max(worldRight - worldLeft, 1e-9);
+  const worldHeight = Math.max(worldTop - worldBottom, 1e-9);
+  camera.scale = Math.min(canvas.clientWidth / worldWidth, canvas.clientHeight / worldHeight) * 0.92;
+  camera.x = canvas.clientWidth / 2 - (worldLeft + worldRight) / 2 * camera.scale;
+  camera.y = canvas.clientHeight / 2 + (worldTop + worldBottom) / 2 * camera.scale;
+  scheduleRender();
+}
 
 function setLoading(isLoading) {
   loadingOverlay.hidden = !isLoading;
@@ -397,6 +444,7 @@ function textFromEntity(entity, matrix) {
     attachmentPoint: entity.attachmentPoint || 1,
     widthFactor: entity.xScale || 1,
     generationFlag: entity.generationFlag || 0,
+    styleName: entity.styleName || 'STANDARD',
     style: colorStyleForEntity(entity),
   };
 }
@@ -595,7 +643,7 @@ async function resolveReferences(generation) {
   return true;
 }
 
-async function revealStages(generation, timing) {
+async function revealStages(generation, timing, summary) {
   if (!(await resolveReferences(generation)) || generation !== loadGeneration) return;
   fitView();
   for (let index = 1; index < STAGES.length; index += 1) {
@@ -614,6 +662,30 @@ async function revealStages(generation, timing) {
       await nextFrame();
     }
     await new Promise((resolve) => setTimeout(resolve, 120));
+  }
+  if (textItems.length && generation === loadGeneration) {
+    status.textContent = '正在解析...载入图纸字体…';
+    try {
+      if (!fontEngine) {
+        const { CadFontEngine } = await import('./font-engine.js?v=20260818-fonts-2');
+        fontEngine = new CadFontEngine({ dataBaseUrl: configuredDataBaseUrl });
+      }
+      await fontEngine.prepare(textItems, summary.textStyles ?? []);
+      if (generation !== loadGeneration) return;
+      window.cadViewerFontState = fontEngine.snapshot();
+      status.textContent = '正在解析...使用图纸字体重绘文字…';
+      textLayoutMode = 'font';
+      fontEngine.state.rerendered = true;
+      window.cadViewerFontState = fontEngine.snapshot();
+      scheduleRender();
+      await nextFrame();
+    } catch (error) {
+      console.warn('字体加载失败，继续使用系统字体。', error);
+      window.cadViewerFontState = {
+        ...(fontEngine?.snapshot?.() ?? { dataBaseUrl: configuredDataBaseUrl }),
+        fatalError: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
   const seconds = ((performance.now() - openedAt) / 1000).toFixed(2);
   const parseSeconds = (timing.totalMs / 1000).toFixed(2);
@@ -664,19 +736,24 @@ function scheduleRender() {
 function renderTexts(ratio) {
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
   for (const item of textItems) {
-    const x = camera.x + (textLayoutMode === 'precise' ? item.x : item.fastX) * camera.scale;
-    const y = camera.y - (textLayoutMode === 'precise' ? item.y : item.fastY) * camera.scale;
+    const x = camera.x + (textLayoutMode === 'fast' ? item.fastX : item.x) * camera.scale;
+    const y = camera.y - (textLayoutMode === 'fast' ? item.fastY : item.y) * camera.scale;
     const fontSize = Math.abs(item.height * camera.scale);
     if (fontSize < 2.5 || x < -200 || y < -200 || x > canvas.clientWidth + 200 || y > canvas.clientHeight + 200) continue;
     context.save();
     context.fillStyle = resolveCssColor(item.style);
     context.translate(x, y);
     context.rotate(-item.rotation);
-    context.font = `${Math.min(Math.max(fontSize, 3), 160)}px "Microsoft YaHei", sans-serif`;
+    context.font = fontEngine
+      ? fontEngine.canvasFontStack(item, fontSize)
+      : `${Math.min(Math.max(fontSize, 3), 160)}px "Microsoft YaHei", sans-serif`;
     if (textLayoutMode === 'fast') {
       context.textAlign = 'left';
       context.textBaseline = 'alphabetic';
-      item.text.split('\n').slice(0, 20).forEach((line, index) => context.fillText(line, 0, index * fontSize * 1.2));
+      item.text.split('\n').slice(0, 20).forEach((line, index) => {
+        const lineY = index * fontSize * 1.2;
+        if (!fontEngine?.drawShxLine(context, line, item, fontSize, lineY)) context.fillText(line, 0, lineY);
+      });
     } else {
       const lines = item.text.split('\n').slice(0, 20);
       const isMText = item.type === 'MTEXT';
@@ -692,7 +769,10 @@ function renderTexts(ratio) {
       const mirrorX = Number(item.generationFlag) & 2 ? -1 : 1;
       const mirrorY = Number(item.generationFlag) & 4 ? -1 : 1;
       context.scale(widthFactor * mirrorX, mirrorY);
-      lines.forEach((line, index) => context.fillText(line, 0, yOffset + index * lineHeight));
+      lines.forEach((line, index) => {
+        const lineY = yOffset + index * lineHeight;
+        if (!fontEngine?.drawShxLine(context, line, item, fontSize, lineY)) context.fillText(line, 0, lineY);
+      });
     }
     context.restore();
   }
@@ -703,7 +783,7 @@ function render() {
   const ratio = Math.min(devicePixelRatio || 1, 2);
   context.save();
   context.setTransform(1, 0, 0, 1, 0, 0);
-  context.fillStyle = '#090b0e';
+  context.fillStyle = backgroundColor;
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.setTransform(camera.scale * ratio, 0, 0, -camera.scale * ratio, camera.x * ratio, camera.y * ratio);
   context.lineWidth = 1 / Math.max(camera.scale, 1e-9);
@@ -739,7 +819,7 @@ async function openBuffer(name, buffer) {
       layerColors = new Map((data.summary.layers ?? []).map((layer) => [layer.name, layer]));
       hasOpenedFile = true;
       document.title = name;
-      revealStages(generation, data.timing);
+      revealStages(generation, data.timing, data.summary);
     }
     if (data.type === 'error') {
       status.textContent = `打开失败：${data.message}${data.errorCode === 'worker_oom' ? '（内存不足）' : ''}`;
@@ -784,6 +864,19 @@ async function openUrl(url) {
 
 openButton.addEventListener('click', () => fileInput.click());
 centerOpenButton.addEventListener('click', () => fileInput.click());
+toolOpenButton.addEventListener('click', () => fileInput.click());
+toolPanButton.addEventListener('click', () => setInteractionMode('pan'));
+toolFitButton.addEventListener('click', fitView);
+toolZoomWindowButton.addEventListener('click', () => setInteractionMode('zoom-window'));
+toolSidebarButton.addEventListener('click', () => {
+  const isVisible = !fileSidebarColumn.classList.toggle('is-hidden');
+  toolSidebarButton.classList.toggle('is-active', isVisible);
+});
+toolBackgroundButton.addEventListener('click', () => {
+  backgroundColor = backgroundColor === '#090b0e' ? '#f8fafc' : '#090b0e';
+  toolBackgroundButton.classList.toggle('is-active', backgroundColor !== '#090b0e');
+  scheduleRender();
+});
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
   if (file) openFile(file);
@@ -813,17 +906,34 @@ canvas.addEventListener('wheel', (event) => {
   scheduleRender();
 }, { passive: false });
 canvas.addEventListener('pointerdown', (event) => {
+  if (interactionMode === 'zoom-window') {
+    zoomWindowStart = { x: event.offsetX, y: event.offsetY };
+    setZoomWindowBox(zoomWindowStart, zoomWindowStart);
+    canvas.setPointerCapture(event.pointerId);
+    return;
+  }
   drag = { x: event.clientX, y: event.clientY, cameraX: camera.x, cameraY: camera.y };
   canvas.setPointerCapture(event.pointerId);
   canvas.classList.add('dragging');
 });
 canvas.addEventListener('pointermove', (event) => {
+  if (zoomWindowStart) {
+    setZoomWindowBox(zoomWindowStart, { x: event.offsetX, y: event.offsetY });
+    return;
+  }
   if (!drag) return;
   camera.x = drag.cameraX + event.clientX - drag.x;
   camera.y = drag.cameraY + event.clientY - drag.y;
   scheduleRender();
 });
-canvas.addEventListener('pointerup', () => {
+canvas.addEventListener('pointerup', (event) => {
+  if (zoomWindowStart) {
+    zoomToWindow(zoomWindowStart, { x: event.offsetX, y: event.offsetY });
+    zoomWindowStart = undefined;
+    zoomWindow.style.display = 'none';
+    setInteractionMode('pan');
+    return;
+  }
   drag = undefined;
   canvas.classList.remove('dragging');
 });

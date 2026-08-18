@@ -8,7 +8,8 @@
 - 类型：纯静态、只读 DWG/DXF 浏览器查看器。文件选择器打开的本地 DWG 在浏览器内由 Web Worker 和 WASM 解析，不回传业务服务器。
 - 渲染：Worker 分批输出可视图元，主线程用 Canvas 2D / Path2D 先显示轮廓，再渐进显示曲线、尺寸、文字、填充和块引用；避免构建完整的 JavaScript CAD 数据库。
 - 支持：打开文件、同源 `?file=` 打开、图纸历史、平移、滚轮缩放、全图、框选放大、图纸列表显隐和底色切换。
-- 限制：不提供原上游的编辑/选择/插件体系；部分代理或自定义实体可能无法显示；系统字体替代缺失 CAD 字体时，文字宽度可能不同。
+- 字体：几何图元全部显示后，读取轻量文字样式表，按需加载 SHX/TTF/WOFF，再重绘文字；不会为了字体阻塞首屏轮廓。
+- 限制：不提供原上游的编辑/选择/插件体系；部分代理或自定义实体可能无法显示；字体仓库没有对应字体时会退回系统字体，文字宽度仍可能不同。
 
 ## Goldenluck 本地接入、测试与 FTP 部署
 
@@ -18,13 +19,16 @@ Goldenluck 是部署目标，不是本项目源码仓库。
 2. 将下列运行文件同步至 `F:\Project\Goldenluck\Web\cad-viewer\`：
    - `index.html`
    - `viewer.js`
+   - `viewer-config.js`
+   - `font-engine.js`
+   - `vendor/shx-parser-LICENSE.txt`
    - `parser-worker.js`
    - `online-open.js`
    - `bindings/libredwg-web.js`
    - `wasm/libredwg-web.js`
    - `wasm/libredwg-web.wasm`
    - `web.config`
-3. 用本地 IIS 先测试：`http://localhost/cad-viewer/`。同源样例可用 `http://localhost/cad-viewer/?file=/CAD-DATA/data/<文件名>.dwg`。
+3. 用 Goldenluck 的本地 IIS 站点先测试。图纸也可通过 `?file=/CAD-DATA/data/<文件名>.dwg` 由查询参数直接打开。
 4. 验收必须包含：页面、Worker、WASM 都返回 HTTP 200；`.wasm` 返回 `application/wasm`；并实际加载至少一张 DWG，确认图形、工具栏、平移、缩放正常。
 5. Goldenluck 根 `Web.config` 不修改、不上传；WASM MIME 映射由 `Web/cad-viewer/web.config` 提供。
 6. 本地测试通过后，上传同一组运行文件到 FTP `/GOLDENLUCK/cad-viewer/`。上传前列出候选文件并获得确认；不得上传业务图纸、`cad-data`、`agent/`、备份、日志或根 `Web.config`。
@@ -33,6 +37,10 @@ Goldenluck 是部署目标，不是本项目源码仓库。
 ## `cad-data` 字体资料
 
 - 本地字体目录统一为小写 `cad-data/fonts/`。
-- 当前快速 Canvas 查看器并不请求、下载或解析这个目录；文字由浏览器系统字体绘制。因此该目录缺失不会阻止打开 DWG，但会影响个别图纸的字形和文字宽度一致性。
+- `cad-viewer/viewer-config.js` 提供 `dataBaseUrl`。本地访问默认使用相对路径 `../cad-data/`；GitHub Pages 或其他非本机站点默认使用上游绝对地址 `https://mlightcad.gitlab.io/cad-data/`。
+- 设置优先级为：URL 的 `?data=<地址>`、页面预先定义的 `window.CAD_VIEWER_CONFIG.dataBaseUrl`、环境默认值。地址可以指向 `cad-data/` 根目录，也可以直接指向 `fonts/`。
+- 固定部署可在加载 `viewer-config.js` 前设置：`window.CAD_VIEWER_CONFIG = { dataBaseUrl: '/CAD-DATA/' }`。临时测试则使用 URL 编码后的 `?data=` 参数。
+- 字体目录至少需要 `fonts/fonts.json` 以及清单引用的字体文件；跨域地址必须允许 CORS。
+- 所有图元完成后才请求 `<dataBaseUrl>/fonts/fonts.json`，并只下载当前图纸文字样式需要的字体和 `simsun` 回退字体；SHX 以线段绘制，TTF/WOFF 通过 `FontFace` 注册后重绘文字。
 - 该目录含 100 个文件、约 48.69 MiB，且没有随附许可证；其中包括疑似 Microsoft/AutoCAD 字体。公开仓库保持忽略，直到每个可再分发文件的来源与许可证被确认。
-- 若未来实现精确字体渲染，只引入可公开再分发的字体，连同来源和许可证说明提交；业务 DWG 永远不提交。
+- 业务 DWG 永远不提交；公开仓库不提交来源或许可证不明确的本地字体文件。

@@ -3507,6 +3507,7 @@ class LibreDwgConverter {
     const libredwg = this.libredwg;
     const classes = [];
     const layers = [];
+    const textStyles = [];
     const blocks = [];
     const safeBatchSize = Math.max(100, Math.floor(batchSize));
     this.convertClasses(data, classes);
@@ -3525,6 +3526,8 @@ class LibreDwgConverter {
       } else if (fixedtype === Dwg_Object_Type.DWG_TYPE_LTYPE) {
         const ltype = this.convertLineType(tio, obj);
         this.entityConverter.ltypes.set(ltype.handle, ltype.name);
+      } else if (fixedtype === Dwg_Object_Type.DWG_TYPE_STYLE) {
+        textStyles.push(this.convertStyle(tio, obj));
       } else if (fixedtype === Dwg_Object_Type.DWG_TYPE_BLOCK_HEADER) {
         const attrs = this.getCommonTableEntryAttrs(tio, obj);
         const block = libredwg.dwg_entity_block_header_get_block(tio);
@@ -3596,6 +3599,7 @@ class LibreDwgConverter {
       entityCount,
       blockCount: blocks.length,
       layers,
+      textStyles,
       stats: this.getConversionStats()
     };
   }
