@@ -560,7 +560,8 @@ function textFromEntity(entity, matrix) {
   const point = hasAlignmentPoint ? entity.endPoint : insertionPoint;
   const transformed = matrix ? matrix.transformPoint(point) : point;
   const fastPoint = matrix ? matrix.transformPoint(insertionPoint) : insertionPoint;
-  const matrixScale = matrix ? Math.hypot(matrix.a, matrix.b) : 1;
+  const matrixScaleX = matrix ? Math.hypot(matrix.a, matrix.b) : 1;
+  const matrixScaleY = matrix ? Math.hypot(matrix.c, matrix.d) : 1;
   const matrixRotation = matrix ? Math.atan2(matrix.b, matrix.a) : 0;
   return {
     text: cleanCadText(entity.text),
@@ -568,7 +569,16 @@ function textFromEntity(entity, matrix) {
     y: transformed.y,
     fastX: fastPoint.x,
     fastY: fastPoint.y,
-    height: Math.max(Math.abs(entity.textHeight || 1) * matrixScale, 1e-9),
+    // MTEXT carries the extents calculated by the CAD application. Retain them
+    // so the browser can preserve its visual footprint even when its fallback
+    // font has different glyph metrics.
+    extentWidth: entity.type === 'MTEXT' && Number.isFinite(entity.extentsWidth) && entity.extentsWidth > 0
+      ? entity.extentsWidth * matrixScaleX
+      : null,
+    extentHeight: entity.type === 'MTEXT' && Number.isFinite(entity.extentsHeight) && entity.extentsHeight > 0
+      ? entity.extentsHeight * matrixScaleY
+      : null,
+    height: Math.max(Math.abs(entity.textHeight || 1) * matrixScaleY, 1e-9),
     rotation: (entity.rotation || 0) + matrixRotation,
     type: entity.type,
     halign: entity.halign || 0,
@@ -584,13 +594,18 @@ function textFromEntity(entity, matrix) {
 function transformTextItem(item, matrix, style) {
   const precise = matrix.transformPoint(item);
   const fast = matrix.transformPoint({ x: item.fastX, y: item.fastY });
+  const matrixScaleX = Math.hypot(matrix.a, matrix.b);
+  const matrixScaleY = Math.hypot(matrix.c, matrix.d);
   return {
     ...item,
     x: precise.x,
     y: precise.y,
     fastX: fast.x,
     fastY: fast.y,
-    height: item.height * Math.hypot(matrix.a, matrix.b),
+    height: item.height * matrixScaleY,
+    extentWidth: item.extentWidth == null ? null : item.extentWidth * matrixScaleX,
+    extentHeight: item.extentHeight == null ? null : item.extentHeight * matrixScaleY,
+    widthFactor: item.widthFactor * matrixScaleX / Math.max(matrixScaleY, 1e-9),
     rotation: item.rotation + Math.atan2(matrix.b, matrix.a),
     style,
   };
@@ -963,13 +978,28 @@ function renderTexts(ratio) {
       const vertical = isMText ? Math.floor((attachment - 1) / 3) : Number(item.valign) || 0;
       context.textAlign = horizontal === 1 || horizontal === 4 ? 'center' : horizontal === 2 ? 'right' : 'left';
       context.textBaseline = isMText ? 'top' : (vertical === 1 ? 'bottom' : vertical === 2 ? 'middle' : vertical === 3 ? 'top' : 'alphabetic');
-      const lineHeight = fontSize * 1.2;
-      const totalHeight = lines.length * lineHeight;
+      const measuredWidths = lines.map((line) => context.measureText(line).width);
+      const measuredWidth = Math.max(...measuredWidths, 0);
+      const firstMetrics = context.measureText(lines[0] || 'M');
+      const inkHeight = Math.max(
+        firstMetrics.actualBoundingBoxAscent + firstMetrics.actualBoundingBoxDescent,
+        fontSize * 0.8,
+      );
+      const boundedHeight = isMText && Number.isFinite(item.extentHeight)
+        ? item.extentHeight * camera.scale
+        : null;
+      const lineHeight = lines.length > 1 && boundedHeight && boundedHeight >= inkHeight
+        ? Math.max(inkHeight, (boundedHeight - inkHeight) / (lines.length - 1))
+        : fontSize * 1.2;
+      const totalHeight = lines.length > 1 ? (lines.length - 1) * lineHeight + inkHeight : inkHeight;
       const yOffset = isMText ? (vertical === 1 ? -totalHeight / 2 : vertical === 2 ? -totalHeight : 0) : 0;
       const widthFactor = Math.max(0.01, Math.abs(Number(item.widthFactor) || 1));
+      const extentScaleX = isMText && Number.isFinite(item.extentWidth) && measuredWidth > 0
+        ? Math.max(0.25, Math.min(4, item.extentWidth * camera.scale / measuredWidth))
+        : 1;
       const mirrorX = Number(item.generationFlag) & 2 ? -1 : 1;
       const mirrorY = Number(item.generationFlag) & 4 ? -1 : 1;
-      context.scale(widthFactor * mirrorX, mirrorY);
+      context.scale(widthFactor * extentScaleX * mirrorX, mirrorY);
       lines.forEach((line, index) => {
         const lineY = yOffset + index * lineHeight;
         if (!fontEngine?.drawShxLine(context, line, item, fontSize, lineY)) context.fillText(line, 0, lineY);
