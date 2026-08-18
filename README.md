@@ -68,16 +68,19 @@
 - DWG WebAssembly 绑定：[mlightcad/libredwg-web](https://github.com/mlightcad/libredwg-web)
 - 底层解析器：[LibreDWG/libredwg](https://github.com/LibreDWG/libredwg)
 
-当前仓库是在 GitHub 上新建后推送的，因此 GitHub 将它识别为独立仓库，不会显示 “forked from mlightcad/cad-viewer”。给本地仓库添加 `upstream` 只能用于拉取和比较上游，不能改变 GitHub 的 Fork 关系：
+当前仓库是 `mlightcad/cad-viewer` 的正式 GitHub Fork。分支职责如下：
+
+- `main`：保留上游原始分支，用于查看和同步 `mlightcad/cad-viewer` 的更新。
+- `large-dwg-viewer`：当前大型 DWG 渐进查看器，并设为仓库默认分支。
+
+本地仓库使用 `origin` 指向本 Fork，使用 `upstream` 指向原项目：
 
 ```bash
 git remote add upstream https://github.com/mlightcad/cad-viewer.git
 git fetch upstream
 ```
 
-由于当前仓库已经从 TypeScript/Three.js 工程重构成独立静态查看器，不建议直接合并 `upstream/main`；更适合通过 `git fetch upstream` 后对照具体提交，选择性移植修复。
-
-如果必须在 GitHub 页面显示正式 Fork 关系，需要从原仓库页面点击 **Fork** 创建仓库。GitHub 没有把现有独立仓库一键改成 Fork 的设置；通常需要换一个仓库名保留当前版本，再创建正式 Fork，或者联系 GitHub Support 调整仓库网络关系。
+由于 `large-dwg-viewer` 已经从 TypeScript/Three.js 工程重构成独立静态查看器，不建议把 `upstream/main` 直接合并进该分支；更适合先 `git fetch upstream`，再对照具体提交选择性移植修复。
 
 ## 开源组件与许可证
 
