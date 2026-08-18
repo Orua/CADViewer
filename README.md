@@ -44,7 +44,7 @@ CADViewer 是从 [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer)
 - 仓库在本机开发地址访问（包括任意端口）：`../cad-data/`
 - GitHub Pages 和其他公开访问地址：`https://mlightcad.gitlab.io/cad-data/`
 
-GitHub 页面使用 `viewer-config.js` 的公开配置。实际部署到 Goldenluck 时，必须把仓库中的 `viewer-config.local.js` 复制为部署副本的 `viewer-config.js`；因此 Goldenluck 本机和局域网用户只读取部署服务器自己的 `/cad-data/`，不连接公网字体 CDN。
+公开页面使用 `viewer-config.js` 的 CDN 配置。离线或内网部署时，将仓库中的 `viewer-config.local.js` 复制为部署副本的 `viewer-config.js`，使客户端只读取部署服务器自己的 `/cad-data/`，不依赖公网字体服务。
 
 推荐目录结构：
 
@@ -129,7 +129,7 @@ cad-data/
 - `cad-viewer/index.html`：页面、历史列表和查看工具栏。
 - `cad-viewer/viewer.js`：渐进消费、块组合、Canvas 渲染、文字重绘和交互。
 - `cad-viewer/viewer-config.js`：字体 DATA 地址配置。
-- `cad-viewer/viewer-config.local.js`：部署专用配置；同步到 Goldenluck 时复制为 `viewer-config.js`，固定默认使用服务器本地 DATA。
+- `cad-viewer/viewer-config.local.js`：离线部署配置模板；部署时复制为 `viewer-config.js`，固定使用服务器本地 DATA。
 - `cad-viewer/font-engine.js`：浏览器直接加载的字体引擎包。
 - `cad-viewer/src/font-engine-entry.js`：字体引擎源码入口。
 - `cad-viewer/parser-worker.js`：Worker 生命周期、WASM 调用和批次消息。
@@ -158,12 +158,13 @@ cad-data/
 
 本地 `origin` 指向当前 Fork，`upstream` 指向原项目。不要把 `upstream/main` 直接合并到 `large-dwg-viewer`；应先获取上游提交，再选择性移植需要的修复。
 
-Goldenluck 本地测试、局域网部署和文件范围见 [`PROJECT.md`](PROJECT.md)。
+通用的架构、自托管和发布说明见 [`PROJECT.md`](PROJECT.md)。
 
 ## 许可证与数据
 
-- `mlightcad/cad-viewer` 使用 MIT License。
-- DWG 解析依赖 `mlightcad/libredwg-web` 和 GPL-3.0-or-later 的 LibreDWG；再分发 WASM 时需继续满足其许可证要求。
+- 本仓库包含不同许可证覆盖的组件，详情见 [`LICENSE.md`](LICENSE.md) 与 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+- 从 `mlightcad/cad-viewer` 派生的应用代码保留其 MIT License。
+- DWG 解析组件来自 `mlightcad/libredwg-web` / LibreDWG，并按 GPL-3.0-or-later 分发。
 - SHX 解析器许可证见 `cad-viewer/vendor/shx-parser-LICENSE.txt`。
 - 公开仓库不包含业务 DWG、浏览器历史、备份、构建缓存或测试图纸。
 - 本地 `cad-data/fonts` 中部分字体来源和再分发许可证不明确，因此不提交到公开仓库；只提交 `cad-data/open` 中许可证明确的最小示例资源。公开环境默认仍使用上游字体地址。
