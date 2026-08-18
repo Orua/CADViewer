@@ -16,15 +16,80 @@ const toolSidebarButton = document.querySelector('#toolSidebarButton');
 const toolBackgroundButton = document.querySelector('#toolBackgroundButton');
 const fileSidebarColumn = document.querySelector('#fileSidebarColumn');
 const zoomWindow = document.querySelector('#zoomWindow');
+const loadingInteractionHint = document.querySelector('#loadingInteractionHint');
 const configuredDataBaseUrl = window.CAD_VIEWER_CONFIG?.dataBaseUrl;
 window.cadViewerFontState = { dataBaseUrl: configuredDataBaseUrl, phase: 'idle' };
 
+const MESSAGES = {
+  'zh-CN': {
+    pageTitle: '工程图在线查看', drawingList: '图纸列表', recentDrawingsHint: '点击查看最近图纸', drawingListHelp: '当前图纸及最近打开的图纸记录。',
+    openDrawing: '打开图纸', fitView: '全图', selectDrawing: '选择图纸后开始查看', parsing: '正在解析...',
+    pan: '拖动查看', zoomWindow: '框选放大', toggleDrawingList: '显示或隐藏图纸列表', toggleBackground: '切换深浅底色',
+    loadingWait: '载入中...请稍后', entityCount: '{count} 图元', combiningBlocks: '正在解析...组合图块…', showingStage: '正在解析...显示{stage}…',
+    stageOutline: '轮廓直线', stageCurves: '圆弧和曲线', stageAnnotation: '尺寸和引线', stageText: '文字', stageHatch: '填充边界',
+    correctingText: '正在解析...校正文字位置…', loadingFonts: '正在解析...载入图纸字体…', renderingFonts: '正在解析...使用图纸字体重绘文字…',
+    completed: '全部完成：{seconds}s（解析 {parseSeconds}s）{remainder}', unsupported: '，仍有 {count} 个无法显示',
+    fastPreview: '快速预览：正在移动缓存图…', refining: '正在精绘...', refineComplete: '精绘完成：{seconds}s', reading: '正在解析...读取 {name}…',
+    decoding: '正在解析...解码 DWG…', initializingParser: '正在解析...初始化解析器…', loadingOutline: '正在解析...载入轮廓线…',
+    openFailed: '打开失败：{message}', workerError: 'Worker 错误：{message}', downloading: '正在解析...下载 {name}…', currentDrawing: '当前：{name}', drawingFile: '图纸文件',
+  },
+  en: {
+    pageTitle: 'Engineering Drawing Viewer', drawingList: 'Drawings', recentDrawingsHint: 'View recent drawings', drawingListHelp: 'Current drawing and recently opened drawing history.',
+    openDrawing: 'Open drawing', fitView: 'Fit', selectDrawing: 'Select a drawing to begin', parsing: 'Parsing...',
+    pan: 'Pan', zoomWindow: 'Zoom window', toggleDrawingList: 'Show or hide drawing list', toggleBackground: 'Toggle light/dark background',
+    loadingWait: 'Loading... please wait', entityCount: '{count} entities', combiningBlocks: 'Parsing... assembling blocks…', showingStage: 'Parsing... showing {stage}…',
+    stageOutline: 'outline lines', stageCurves: 'arcs and curves', stageAnnotation: 'dimensions and leaders', stageText: 'text', stageHatch: 'hatch boundaries',
+    correctingText: 'Parsing... correcting text positions…', loadingFonts: 'Parsing... loading drawing fonts…', renderingFonts: 'Parsing... rendering text with drawing fonts…',
+    completed: 'Complete: {seconds}s (parse {parseSeconds}s){remainder}', unsupported: ', {count} items could not be displayed',
+    fastPreview: 'Fast preview: moving cached drawing…', refining: 'Refining...', refineComplete: 'Refinement complete: {seconds}s', reading: 'Parsing... reading {name}…',
+    decoding: 'Parsing... decoding DWG…', initializingParser: 'Parsing... initializing parser…', loadingOutline: 'Parsing... loading outline lines…',
+    openFailed: 'Open failed: {message}', workerError: 'Worker error: {message}', downloading: 'Parsing... downloading {name}…', currentDrawing: 'Current: {name}', drawingFile: 'Drawing file',
+  },
+};
+
+function normalizeLanguage(value) {
+  return String(value || '').toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
+}
+
+let language = normalizeLanguage(window.CAD_VIEWER_CONFIG?.language || 'zh-CN');
+
+function t(key, values = {}) {
+  const template = MESSAGES[language][key] ?? MESSAGES['zh-CN'][key] ?? key;
+  return template.replace(/\{(\w+)\}/g, (_, name) => values[name] ?? '');
+}
+
+function setStatus(key, values) {
+  status.dataset.i18nStatus = key;
+  status.i18nValues = values;
+  status.textContent = t(key, values);
+}
+
+function applyLanguage() {
+  document.documentElement.lang = language;
+  document.querySelectorAll('[data-i18n]').forEach((element) => {
+    element.textContent = t(element.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach((element) => {
+    element.title = t(element.dataset.i18nTitle);
+  });
+  document.querySelectorAll('[data-i18n-aria-label]').forEach((element) => {
+    element.setAttribute('aria-label', t(element.dataset.i18nAriaLabel));
+  });
+  if (status.dataset.i18nStatus) setStatus(status.dataset.i18nStatus, status.i18nValues);
+  if (entityCount) metrics.textContent = t('entityCount', { count: entityCount.toLocaleString() });
+  if (!hasOpenedFile) document.title = t('pageTitle');
+  if (drawingLoadActive) loadingInteractionHint.textContent = t('loadingWait');
+  window.dispatchEvent(new CustomEvent('cadviewer-languagechange', { detail: { language } }));
+}
+
+window.cadViewerI18n = { t, get language() { return language; } };
+
 const STAGES = [
-  { key: 'outline', label: '轮廓直线' },
-  { key: 'curves', label: '圆弧和曲线' },
-  { key: 'annotation', label: '尺寸和引线' },
-  { key: 'text', label: '文字' },
-  { key: 'hatch', label: '填充边界' },
+  { key: 'outline', labelKey: 'stageOutline' },
+  { key: 'curves', labelKey: 'stageCurves' },
+  { key: 'annotation', labelKey: 'stageAnnotation' },
+  { key: 'text', labelKey: 'stageText' },
+  { key: 'hatch', labelKey: 'stageHatch' },
 ];
 
 let worker;
@@ -51,12 +116,68 @@ let hasOpenedFile = false;
 let interactionMode = 'pan';
 let zoomWindowStart;
 let backgroundColor = '#090b0e';
+let drawingComplete = false;
+let interactionCache;
+let interactionCacheCamera;
+let fastInteractionActive = false;
+let interactionStatusRestore = '';
+let restoreStatusAfterRender = '';
+let interactionSequence = 0;
+let wheelStopTimer;
+let canvasInteractionsBound = false;
+let refineStartedAt = 0;
+let drawingLoadActive = false;
+let loadingHintTimer;
 
 function setInteractionMode(mode) {
   interactionMode = mode;
   toolPanButton.classList.toggle('is-active', mode === 'pan');
   toolZoomWindowButton.classList.toggle('is-active', mode === 'zoom-window');
-  canvas.style.cursor = mode === 'zoom-window' ? 'crosshair' : 'grab';
+  canvas.style.cursor = canvasInteractionsBound ? (mode === 'zoom-window' ? 'crosshair' : 'grab') : (drawingLoadActive ? 'wait' : 'default');
+}
+
+function setDrawingInteractionControls(enabled) {
+  toolPanButton.disabled = !enabled;
+  toolFitButton.disabled = !enabled;
+  toolZoomWindowButton.disabled = !enabled;
+  canvas.style.cursor = enabled ? (interactionMode === 'zoom-window' ? 'crosshair' : 'grab') : (drawingLoadActive ? 'wait' : 'default');
+}
+
+function showLoadingInteractionHint(event) {
+  if (!drawingLoadActive) return;
+  clearTimeout(loadingHintTimer);
+  loadingInteractionHint.textContent = t('loadingWait');
+  loadingInteractionHint.style.left = `${Math.min(event.offsetX + 16, canvas.clientWidth - 16)}px`;
+  loadingInteractionHint.style.top = `${Math.min(event.offsetY + 16, canvas.clientHeight - 16)}px`;
+  loadingInteractionHint.classList.add('is-visible');
+  loadingHintTimer = setTimeout(hideLoadingInteractionHint, 1400);
+}
+
+function hideLoadingInteractionHint() {
+  clearTimeout(loadingHintTimer);
+  loadingInteractionHint.classList.remove('is-visible');
+}
+
+function onCanvasLoadingPointerDown(event) {
+  showLoadingInteractionHint(event);
+}
+
+function onCanvasLoadingWheel(event) {
+  if (!drawingLoadActive) return;
+  event.preventDefault();
+  showLoadingInteractionHint(event);
+}
+
+function beginDrawingLoad() {
+  drawingLoadActive = true;
+  releaseCanvasInteractions();
+  setDrawingInteractionControls(false);
+}
+
+function finishDrawingLoad() {
+  drawingLoadActive = false;
+  hideLoadingInteractionHint();
+  if (!canvasInteractionsBound) setDrawingInteractionControls(false);
 }
 
 function setZoomWindowBox(start, end) {
@@ -104,6 +225,8 @@ function freshBoundsMap() {
 
 function resetViewer() {
   worker?.terminate();
+  releaseCanvasInteractions();
+  setDrawingInteractionControls(false);
   loadGeneration += 1;
   stagePaths = new Map(STAGES.map((stage) => [stage.key, []]));
   visibleStages = new Set(['outline']);
@@ -119,6 +242,15 @@ function resetViewer() {
   unresolvedCount = 0;
   layerColors = new Map();
   firstPaintAt = 0;
+  drawingComplete = false;
+  interactionCache = undefined;
+  interactionCacheCamera = undefined;
+  fastInteractionActive = false;
+  interactionStatusRestore = '';
+  restoreStatusAfterRender = '';
+  refineStartedAt = 0;
+  interactionSequence += 1;
+  clearTimeout(wheelStopTimer);
   metrics.textContent = '';
   fitButton.disabled = true;
   scheduleRender();
@@ -531,7 +663,7 @@ function consumeBatch(batch) {
   entityCount += batch.entities.length;
   if (batch.kind === 'block') consumeBlockBatch(batch);
   else consumeModelBatch(batch);
-  metrics.textContent = `${entityCount.toLocaleString()} 图元`;
+  metrics.textContent = t('entityCount', { count: entityCount.toLocaleString() });
 }
 
 function referenceMatrices(entity, block) {
@@ -636,7 +768,7 @@ async function resolveReferences(generation) {
       }
     }
     textItems.push(...chunkTexts);
-    status.textContent = '正在解析...组合图块…';
+    setStatus('combiningBlocks');
     scheduleRender();
     await nextFrame();
   }
@@ -650,13 +782,13 @@ async function revealStages(generation, timing, summary) {
     if (generation !== loadGeneration) return;
     const stage = STAGES[index];
     visibleStages.add(stage.key);
-    status.textContent = `正在解析...显示${stage.label}…`;
+    setStatus('showingStage', { stage: t(stage.labelKey) });
     scheduleRender();
     await nextFrame();
     if (stage.key === 'text') {
       await new Promise((resolve) => setTimeout(resolve, 180));
       if (generation !== loadGeneration) return;
-      status.textContent = '正在解析...校正文字位置…';
+      setStatus('correctingText');
       textLayoutMode = 'precise';
       scheduleRender();
       await nextFrame();
@@ -664,7 +796,7 @@ async function revealStages(generation, timing, summary) {
     await new Promise((resolve) => setTimeout(resolve, 120));
   }
   if (textItems.length && generation === loadGeneration) {
-    status.textContent = '正在解析...载入图纸字体…';
+    setStatus('loadingFonts');
     try {
       if (!fontEngine) {
         const { CadFontEngine } = await import('./font-engine.js?v=20260818-fonts-2');
@@ -673,7 +805,7 @@ async function revealStages(generation, timing, summary) {
       await fontEngine.prepare(textItems, summary.textStyles ?? []);
       if (generation !== loadGeneration) return;
       window.cadViewerFontState = fontEngine.snapshot();
-      status.textContent = '正在解析...使用图纸字体重绘文字…';
+      setStatus('renderingFonts');
       textLayoutMode = 'font';
       fontEngine.state.rerendered = true;
       window.cadViewerFontState = fontEngine.snapshot();
@@ -690,7 +822,14 @@ async function revealStages(generation, timing, summary) {
   const seconds = ((performance.now() - openedAt) / 1000).toFixed(2);
   const parseSeconds = (timing.totalMs / 1000).toFixed(2);
   const remainder = unsupportedCount + unresolvedCount;
-  status.textContent = `全部完成：${seconds}s（解析 ${parseSeconds}s）${remainder ? `，仍有 ${remainder.toLocaleString()} 个无法显示` : ''}`;
+  setStatus('completed', {
+    seconds,
+    parseSeconds,
+    remainder: remainder ? t('unsupported', { count: remainder.toLocaleString() }) : '',
+  });
+  drawingComplete = true;
+  finishDrawingLoad();
+  bindCanvasInteractions();
   openButton.disabled = false;
 }
 
@@ -699,6 +838,8 @@ function resize() {
   const rect = canvas.getBoundingClientRect();
   canvas.width = Math.max(1, Math.round(rect.width * ratio));
   canvas.height = Math.max(1, Math.round(rect.height * ratio));
+  interactionCache = undefined;
+  interactionCacheCamera = undefined;
   scheduleRender();
 }
 
@@ -731,6 +872,66 @@ function scheduleRender() {
   if (renderPending) return;
   renderPending = true;
   requestAnimationFrame(render);
+}
+
+function refreshInteractionCache() {
+  if (!canvas.width || !canvas.height) return;
+  if (!interactionCache) interactionCache = document.createElement('canvas');
+  if (interactionCache.width !== canvas.width || interactionCache.height !== canvas.height) {
+    interactionCache.width = canvas.width;
+    interactionCache.height = canvas.height;
+  }
+  const cacheContext = interactionCache.getContext('2d', { alpha: false });
+  cacheContext.setTransform(1, 0, 0, 1, 0, 0);
+  cacheContext.drawImage(canvas, 0, 0);
+  interactionCacheCamera = { ...camera };
+}
+
+function beginFastInteraction() {
+  interactionSequence += 1;
+  clearTimeout(wheelStopTimer);
+  if (!drawingComplete || !interactionCache || !interactionCacheCamera) return false;
+  if (!fastInteractionActive) interactionStatusRestore = status.textContent;
+  fastInteractionActive = true;
+  restoreStatusAfterRender = '';
+  setStatus('fastPreview');
+  return true;
+}
+
+function finishFastInteraction(sequence = interactionSequence) {
+  if (!fastInteractionActive || sequence !== interactionSequence) return;
+  setStatus('refining');
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (!fastInteractionActive || sequence !== interactionSequence) return;
+      fastInteractionActive = false;
+      refineStartedAt = performance.now();
+      scheduleRender();
+    });
+  });
+}
+
+function finishWheelInteractionSoon() {
+  const sequence = interactionSequence;
+  clearTimeout(wheelStopTimer);
+  wheelStopTimer = setTimeout(() => finishFastInteraction(sequence), 160);
+}
+
+function renderInteractionPreview(ratio) {
+  if (!fastInteractionActive || !interactionCache || !interactionCacheCamera) return false;
+  if (interactionCache.width !== canvas.width || interactionCache.height !== canvas.height) return false;
+  const scale = camera.scale / interactionCacheCamera.scale;
+  const offsetX = (camera.x - interactionCacheCamera.x * scale) * ratio;
+  const offsetY = (camera.y - interactionCacheCamera.y * scale) * ratio;
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.fillStyle = backgroundColor;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.imageSmoothingEnabled = true;
+  context.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+  context.drawImage(interactionCache, 0, 0);
+  context.restore();
+  return true;
 }
 
 function renderTexts(ratio) {
@@ -781,6 +982,7 @@ function renderTexts(ratio) {
 function render() {
   renderPending = false;
   const ratio = Math.min(devicePixelRatio || 1, 2);
+  if (renderInteractionPreview(ratio)) return;
   context.save();
   context.setTransform(1, 0, 0, 1, 0, 0);
   context.fillStyle = backgroundColor;
@@ -796,24 +998,35 @@ function render() {
   }
   context.restore();
   if (visibleStages.has('text')) renderTexts(ratio);
+  refreshInteractionCache();
+  if (restoreStatusAfterRender) {
+    status.textContent = restoreStatusAfterRender;
+    restoreStatusAfterRender = '';
+  }
+  if (refineStartedAt) {
+    const seconds = ((performance.now() - refineStartedAt) / 1000).toFixed(2);
+    setStatus('refineComplete', { seconds });
+    refineStartedAt = 0;
+  }
 }
 
 async function openBuffer(name, buffer) {
+  beginDrawingLoad();
   resetViewer();
   const generation = loadGeneration;
   openButton.disabled = true;
   setLoading(true);
   openedAt = performance.now();
-  status.textContent = `正在解析...读取 ${name}…`;
+  setStatus('reading', { name });
   worker = new Worker('./parser-worker.js', { type: 'module' });
   worker.onmessage = ({ data }) => {
     if (generation !== loadGeneration) return;
-    if (data.type === 'phase') status.textContent = data.phase === 'decode' ? '正在解析...解码 DWG…' : '正在解析...初始化解析器…';
+    if (data.type === 'phase') setStatus(data.phase === 'decode' ? 'decoding' : 'initializingParser');
     if (data.type === 'batch') {
       consumeBatch(data.batch);
       hasOpenedFile = true;
       setLoading(false);
-      status.textContent = '正在解析...载入轮廓线…';
+      setStatus('loadingOutline');
     }
     if (data.type === 'done') {
       layerColors = new Map((data.summary.layers ?? []).map((layer) => [layer.name, layer]));
@@ -822,44 +1035,132 @@ async function openBuffer(name, buffer) {
       revealStages(generation, data.timing, data.summary);
     }
     if (data.type === 'error') {
-      status.textContent = `打开失败：${data.message}${data.errorCode === 'worker_oom' ? '（内存不足）' : ''}`;
+      setStatus('openFailed', { message: `${data.message}${data.errorCode === 'worker_oom' ? '（内存不足）' : ''}` });
       openButton.disabled = false;
       setLoading(false);
+      finishDrawingLoad();
     }
   };
   worker.onerror = (event) => {
-    status.textContent = `Worker 错误：${event.message}`;
+    setStatus('workerError', { message: event.message });
     openButton.disabled = false;
     setLoading(false);
+    finishDrawingLoad();
   };
   worker.postMessage({ type: 'open', buffer }, [buffer]);
 }
 
 async function openFile(file) {
   try {
+    beginDrawingLoad();
     window.cadViewerDrawingList?.openLocal(file.name);
     await openBuffer(file.name, await file.arrayBuffer());
   } catch (error) {
-    status.textContent = `打开失败：${error instanceof Error ? error.message : String(error)}`;
+    setStatus('openFailed', { message: error instanceof Error ? error.message : String(error) });
     openButton.disabled = false;
     setLoading(false);
+    finishDrawingLoad();
   }
 }
 
 async function openUrl(url) {
-  const name = decodeURIComponent(new URL(url, window.location.href).pathname.split('/').pop() || '图纸文件');
+  const name = decodeURIComponent(new URL(url, window.location.href).pathname.split('/').pop() || t('drawingFile'));
   try {
+    beginDrawingLoad();
     window.cadViewerDrawingList?.openUrl(url);
     setLoading(true);
-    status.textContent = `正在解析...下载 ${name}…`;
+    setStatus('downloading', { name });
     const response = await fetch(url);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     await openBuffer(name, await response.arrayBuffer());
   } catch (error) {
-    status.textContent = `打开失败：${error instanceof Error ? error.message : String(error)}`;
+    setStatus('openFailed', { message: error instanceof Error ? error.message : String(error) });
     openButton.disabled = false;
     setLoading(false);
+    finishDrawingLoad();
   }
+}
+
+function onCanvasWheel(event) {
+  event.preventDefault();
+  const usingFastPreview = beginFastInteraction();
+  const factor = Math.exp(-event.deltaY * 0.001);
+  const worldX = (event.offsetX - camera.x) / camera.scale;
+  const worldY = (camera.y - event.offsetY) / camera.scale;
+  camera.scale = Math.max(1e-8, Math.min(1e8, camera.scale * factor));
+  camera.x = event.offsetX - worldX * camera.scale;
+  camera.y = event.offsetY + worldY * camera.scale;
+  scheduleRender();
+  if (usingFastPreview) finishWheelInteractionSoon();
+}
+
+function onCanvasPointerDown(event) {
+  if (interactionMode === 'zoom-window') {
+    zoomWindowStart = { x: event.offsetX, y: event.offsetY };
+    setZoomWindowBox(zoomWindowStart, zoomWindowStart);
+    canvas.setPointerCapture(event.pointerId);
+    return;
+  }
+  drag = { x: event.clientX, y: event.clientY, cameraX: camera.x, cameraY: camera.y };
+  beginFastInteraction();
+  canvas.setPointerCapture(event.pointerId);
+  canvas.classList.add('dragging');
+}
+
+function onCanvasPointerMove(event) {
+  if (zoomWindowStart) {
+    setZoomWindowBox(zoomWindowStart, { x: event.offsetX, y: event.offsetY });
+    return;
+  }
+  if (!drag) return;
+  camera.x = drag.cameraX + event.clientX - drag.x;
+  camera.y = drag.cameraY + event.clientY - drag.y;
+  scheduleRender();
+}
+
+function onCanvasPointerUp(event) {
+  if (zoomWindowStart) {
+    zoomToWindow(zoomWindowStart, { x: event.offsetX, y: event.offsetY });
+    zoomWindowStart = undefined;
+    zoomWindow.style.display = 'none';
+    setInteractionMode('pan');
+    return;
+  }
+  drag = undefined;
+  canvas.classList.remove('dragging');
+  finishFastInteraction();
+}
+
+function onCanvasPointerCancel() {
+  drag = undefined;
+  canvas.classList.remove('dragging');
+  finishFastInteraction();
+}
+
+function bindCanvasInteractions() {
+  if (canvasInteractionsBound) return;
+  canvas.addEventListener('wheel', onCanvasWheel, { passive: false });
+  canvas.addEventListener('pointerdown', onCanvasPointerDown);
+  canvas.addEventListener('pointermove', onCanvasPointerMove);
+  canvas.addEventListener('pointerup', onCanvasPointerUp);
+  canvas.addEventListener('pointercancel', onCanvasPointerCancel);
+  canvasInteractionsBound = true;
+  setDrawingInteractionControls(true);
+}
+
+function releaseCanvasInteractions() {
+  if (!canvasInteractionsBound) return;
+  canvas.removeEventListener('wheel', onCanvasWheel);
+  canvas.removeEventListener('pointerdown', onCanvasPointerDown);
+  canvas.removeEventListener('pointermove', onCanvasPointerMove);
+  canvas.removeEventListener('pointerup', onCanvasPointerUp);
+  canvas.removeEventListener('pointercancel', onCanvasPointerCancel);
+  canvasInteractionsBound = false;
+  setDrawingInteractionControls(false);
+  drag = undefined;
+  zoomWindowStart = undefined;
+  zoomWindow.style.display = 'none';
+  canvas.classList.remove('dragging');
 }
 
 openButton.addEventListener('click', () => fileInput.click());
@@ -895,48 +1196,9 @@ document.querySelector('#predefinedFileList').addEventListener('click', (event) 
   }
 });
 fitButton.addEventListener('click', fitView);
-canvas.addEventListener('wheel', (event) => {
-  event.preventDefault();
-  const factor = Math.exp(-event.deltaY * 0.001);
-  const worldX = (event.offsetX - camera.x) / camera.scale;
-  const worldY = (camera.y - event.offsetY) / camera.scale;
-  camera.scale = Math.max(1e-8, Math.min(1e8, camera.scale * factor));
-  camera.x = event.offsetX - worldX * camera.scale;
-  camera.y = event.offsetY + worldY * camera.scale;
-  scheduleRender();
-}, { passive: false });
-canvas.addEventListener('pointerdown', (event) => {
-  if (interactionMode === 'zoom-window') {
-    zoomWindowStart = { x: event.offsetX, y: event.offsetY };
-    setZoomWindowBox(zoomWindowStart, zoomWindowStart);
-    canvas.setPointerCapture(event.pointerId);
-    return;
-  }
-  drag = { x: event.clientX, y: event.clientY, cameraX: camera.x, cameraY: camera.y };
-  canvas.setPointerCapture(event.pointerId);
-  canvas.classList.add('dragging');
-});
-canvas.addEventListener('pointermove', (event) => {
-  if (zoomWindowStart) {
-    setZoomWindowBox(zoomWindowStart, { x: event.offsetX, y: event.offsetY });
-    return;
-  }
-  if (!drag) return;
-  camera.x = drag.cameraX + event.clientX - drag.x;
-  camera.y = drag.cameraY + event.clientY - drag.y;
-  scheduleRender();
-});
-canvas.addEventListener('pointerup', (event) => {
-  if (zoomWindowStart) {
-    zoomToWindow(zoomWindowStart, { x: event.offsetX, y: event.offsetY });
-    zoomWindowStart = undefined;
-    zoomWindow.style.display = 'none';
-    setInteractionMode('pan');
-    return;
-  }
-  drag = undefined;
-  canvas.classList.remove('dragging');
-});
+canvas.addEventListener('pointerdown', onCanvasLoadingPointerDown);
+canvas.addEventListener('wheel', onCanvasLoadingWheel, { passive: false });
 window.addEventListener('resize', resize);
+applyLanguage();
 resetViewer();
 resize();

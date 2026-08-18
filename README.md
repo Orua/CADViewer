@@ -13,6 +13,16 @@ CADViewer 是从 [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer)
 - 支持平移、滚轮缩放、全图、框选放大、图纸列表显隐和深浅底色。
 - 修复常见 CAD 转义字符、文字对齐、颜色继承和路径错误连线问题。
 
+## 交互与语言 / Interaction and language
+
+- 图纸仍在解析、组合图块或载入字体时，查看器会锁定平移、滚轮缩放和框选放大；完整图元与文字载入后才释放这些操作。用户在锁定期间尝试拖动或缩放时，画布显示等待光标，并在指针附近短暂显示“载入中...请稍后”提示后淡出。
+- 结束快速平移或缩放后，状态栏显示本次精绘渲染时间，而不是继续显示总载入时间。
+- 界面支持简体中文和英文。语言由 `cad-viewer/viewer-config.js`（或私有部署使用的 `viewer-config.local.js`）中的 `language` 配置控制：`'zh-CN'` 或 `'en'`。不提供运行时语言选择器。
+
+- While a drawing is being parsed, block references are assembled, or fonts are loading, pan, wheel zoom, and zoom-window actions remain locked. They are released only after the complete drawing and text are available. An attempted drag or zoom during this period shows a wait cursor and a short-lived “Loading... please wait” hint beside the pointer.
+- After a fast pan or zoom ends, the status bar reports the elapsed refinement-render time instead of retaining the total-load time.
+- The interface supports Simplified Chinese and English. Set `language` to `'zh-CN'` or `'en'` in `cad-viewer/viewer-config.js` (or `viewer-config.local.js` for a private deployment). No runtime language picker is exposed.
+
 ## 快速使用
 
 将整个 `cad-viewer/` 目录放到静态网站，并确保服务器正确返回 `.wasm`、`.dwg`、`.dxf`、`.shx` 和字体文件。入口为：
@@ -37,7 +47,9 @@ CADViewer 是从 [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer)
 
 ## 字体 DATA 设置
 
-字体路径由 [`cad-viewer/viewer-config.js`](cad-viewer/viewer-config.js) 的 `dataBaseUrl` 控制。该地址可以指向 `cad-data` 根目录，也可以直接指向 `fonts/` 目录。
+字体路径由 [`cad-viewer/viewer-config.js`](cad-viewer/viewer-config.js) 的 `dataBaseUrl` 控制；同一文件的 `language` 设置界面语言（`'zh-CN'` 或 `'en'`）。该地址可以指向 `cad-data` 根目录，也可以直接指向 `fonts/` 目录。
+
+`dataBaseUrl` controls the font-data location, while `language` selects the viewer UI language (`'zh-CN'` or `'en'`).
 
 默认规则：
 

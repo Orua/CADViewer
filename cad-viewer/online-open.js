@@ -17,11 +17,16 @@
 
   var recentCookieName = "goldenluckCadRecent";
   var maximumRecentDrawings = 10;
+  var currentDrawing = null;
+
+  function t(key, values, fallback) {
+    return window.cadViewerI18n ? window.cadViewerI18n.t(key, values) : fallback;
+  }
 
   function getFileName(url) {
     var pathname = new URL(url).pathname;
     var segments = pathname.split("/");
-    return decodeURIComponent(segments[segments.length - 1] || "图纸文件");
+    return decodeURIComponent(segments[segments.length - 1] || t("drawingFile", null, "图纸文件"));
   }
 
   function isLocalDrawingUrl(url) {
@@ -66,7 +71,7 @@
   }
 
   function rememberLocalDrawing(name) {
-    var drawing = { name: name || "图纸文件", local: true };
+    var drawing = { name: name || t("drawingFile", null, "图纸文件"), local: true };
     var drawings = getRecentDrawings().filter(function (item) {
       return item && !(item.local === true && item.name === drawing.name);
     });
@@ -85,7 +90,7 @@
     if (drawing.local) {
       button.dataset.localHistory = "true";
     }
-    button.textContent = isCurrent ? "当前：" + drawing.name : drawing.name;
+    button.textContent = isCurrent ? t("currentDrawing", { name: drawing.name }, "当前：" + drawing.name) : drawing.name;
     button.title = drawing.name;
     if (isCurrent) {
       button.classList.add("active");
@@ -115,12 +120,14 @@
 
   function openUrlDrawing(url) {
     var drawing = { url: url, name: getFileName(url) };
+    currentDrawing = drawing;
     rememberDrawing(url);
     return renderDrawings(drawing);
   }
 
   function openLocalDrawing(name) {
-    var drawing = { name: name || "图纸文件", local: true };
+    var drawing = { name: name || t("drawingFile", null, "图纸文件"), local: true };
+    currentDrawing = drawing;
     rememberLocalDrawing(drawing.name);
     return renderDrawings(drawing);
   }
@@ -128,6 +135,9 @@
   var drawingUrl = getDrawingUrl();
   var currentButton = drawingUrl ? openUrlDrawing(drawingUrl) : renderDrawings(null);
   window.cadViewerDrawingList = { openUrl: openUrlDrawing, openLocal: openLocalDrawing };
+  window.addEventListener("cadviewer-languagechange", function () {
+    currentButton = renderDrawings(currentDrawing);
+  });
 
   if (currentButton) {
     // The viewer binds delegated button handlers during DOMContentLoaded.
