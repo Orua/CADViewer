@@ -1,0 +1,25 @@
+﻿# Agent records, temporary tools, backups, and generated reports
+agent/
+
+# Proprietary or large drawing inputs
+CAD-DATA/
+samples/
+*.dwg
+*.dxf
+
+# Local web-server and editor files
+*.log
+.vs/
+.vscode/
+node_modules/
+
+# Experimental builds not used by the default viewer
+cad-viewer/assets/
+cad-viewer/workers/
+cad-viewer/chinese-ui.js
+cad-viewer/large-array-push-fix.js
+cad-viewer/viewer-customizations.js
+cad-viewer/viewer-runtime.iife.js
+cad-viewer/worker-cache-version.js
+cad-viewer/workers/experimental/
+cad-viewer/pg14791-parser-diagnostic.html
