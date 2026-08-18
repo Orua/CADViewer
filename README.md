@@ -1,182 +1,527 @@
-# CADViewer：大型 DWG 渐进式浏览器查看器
+# CADViewer — Fast Large DWG/DXF Viewer for the Browser
 
-CADViewer 是从 [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer) 演化出的纯前端只读查看器，目标是在浏览器内更快地打开大型 DWG，并降低 JavaScript 主线程的等待时间和内存压力。
+CADViewer is an open-source, browser-based DWG viewer designed for large engineering drawings that are slow or fail to load in conventional web CAD viewers. It parses DWG/DXF files inside the browser with a Web Worker and LibreDWG WebAssembly, streams lightweight entity batches to the main thread, and progressively renders them with Canvas 2D and `Path2D`.
 
-本地文件由 Web Worker 与 LibreDWG WebAssembly 在浏览器内解析，不会上传到业务服务器。通过 `?file=` 打开的图纸只从当前站点读取同源静态文件。
+If you are looking for a **large DWG viewer**, **online DWG viewer**, **browser CAD viewer**, or a practical way to preview oversized AutoCAD drawings without building a complete JavaScript CAD database, this repository focuses on that problem.
 
-## 主要能力
+CADViewer is a read-only viewer. It prioritizes fast opening, progressive display, lower main-thread memory pressure, and self-hosted deployment over editing and plugin features.
 
-- 分批解析并渐进显示大型 DWG，不必等待完整 JavaScript CAD 数据库建立。
-- 先显示轮廓，再补充曲线、尺寸、文字、填充和块引用。
-- 支持 SHX、TTF、OTF、WOFF 字体按需加载；字体不会阻塞首屏图形。
-- 支持本地文件、同源 `?file=` 地址、最近打开记录。
-- 支持平移、滚轮缩放、全图、框选放大、图纸列表显隐和深浅底色。
-- 修复常见 CAD 转义字符、文字对齐、颜色继承和路径错误连线问题。
+[中文说明](#cadviewer大型-dwgdxf-浏览器查看器)
 
-## 交互与语言 / Interaction and language
+## Why this project exists
 
-- 图纸仍在解析、组合图块或载入字体时，查看器会锁定平移、滚轮缩放和框选放大；完整图元与文字载入后才释放这些操作。用户在锁定期间尝试拖动或缩放时，画布显示等待光标，并在指针附近短暂显示“载入中...请稍后”提示后淡出。
-- 结束快速平移或缩放后，状态栏显示本次精绘渲染时间，而不是继续显示总载入时间。
-- 界面支持简体中文和英文。语言由 `cad-viewer/viewer-config.js`（或私有部署使用的 `viewer-config.local.js`）中的 `language` 配置控制：`'zh-CN'` 或 `'en'`。不提供运行时语言选择器。
+Large DWG files are difficult to open in a browser when an application must first decode the entire drawing, create a large JavaScript object graph, build a complete scene, load every font, and only then paint the first frame. That approach can cause long blank-screen waits, high memory consumption, an unresponsive main thread, or an out-of-memory failure.
 
-- While a drawing is being parsed, block references are assembled, or fonts are loading, pan, wheel zoom, and zoom-window actions remain locked. They are released only after the complete drawing and text are available. An attempted drag or zoom during this period shows a wait cursor and a short-lived “Loading... please wait” hint beside the pointer.
-- After a fast pan or zoom ends, the status bar reports the elapsed refinement-render time instead of retaining the total-load time.
-- The interface supports Simplified Chinese and English. Set `language` to `'zh-CN'` or `'en'` in `cad-viewer/viewer-config.js` (or `viewer-config.local.js` for a private deployment). No runtime language picker is exposed.
+CADViewer uses a progressive pipeline instead:
 
-## 快速使用
+1. The DWG `ArrayBuffer` is transferred to a Web Worker without copying the full file.
+2. LibreDWG WebAssembly decodes the drawing away from the main UI thread.
+3. The worker emits lightweight batches of visible entities instead of returning a complete CAD database.
+4. The viewer displays outlines first, followed by curves, dimensions, text, hatches, and block references.
+5. Drawing fonts are loaded only after geometry is available and only when the current drawing needs them.
+6. Pan and zoom remain locked until the drawing is complete, preventing an incomplete camera state from disrupting progressive rendering.
 
-将整个 `cad-viewer/` 目录放到静态网站，并确保服务器正确返回 `.wasm`、`.dwg`、`.dxf`、`.shx` 和字体文件。入口为：
+This architecture is intended to make very large drawings useful sooner while keeping the page responsive.
 
-```text
-/cad-viewer/
+## Features
+
+- Progressive DWG/DXF parsing and rendering for large engineering drawings.
+- Browser-only processing with a Web Worker and LibreDWG WebAssembly.
+- Canvas 2D and `Path2D` rendering without a complete Three.js CAD scene.
+- Outline-first display, followed by curves, annotations, text, hatches, and block references.
+- Local file opening and same-origin `?file=` URLs.
+- Recent-drawing history stored by the browser.
+- Pan, wheel zoom, fit-to-view, zoom window, drawing-list visibility, and light/dark backgrounds.
+- Fast cached previews while panning or zooming, followed by a precise vector redraw.
+- Refinement-render timing shown after an interaction completes.
+- Interaction lock while the drawing is loading. An attempted drag or wheel zoom shows a wait cursor and a short-lived loading hint.
+- Deferred SHX, TTF, OTF, and WOFF font loading.
+- SHX stroke rendering and browser `FontFace` support for outline fonts.
+- Chinese CAD escape-sequence handling, text alignment fixes, ByLayer/ByBlock color inheritance, and curve-path corrections.
+- Simplified Chinese and English UI configured through JavaScript.
+- Static hosting: no application server or database is required.
+
+## Quick start
+
+Serve the repository through HTTP. Do not open `index.html` directly with a `file://` URL because Web Workers, WebAssembly, modules, and font requests require a web origin.
+
+For example:
+
+```powershell
+python -m http.server 53281
 ```
 
-打开同源图纸：
+Then open:
 
 ```text
-/cad-viewer/?file=/CAD-DATA/data/example.dwg
+http://localhost:53281/cad-viewer/
 ```
 
-临时指定字体资料地址：
+Use the **Open drawing** button to select a local `.dwg` or `.dxf` file. Local files are parsed in the browser and are not uploaded by this viewer.
+
+To open a drawing already hosted on the same origin:
 
 ```text
-/cad-viewer/?data=%2FCAD-DATA%2F
+/cad-viewer/?file=/drawings/example.dwg
 ```
 
-`file` 和 `data` 参数都应进行 URL 编码。
+The `file` value should be URL-encoded when it contains spaces or special characters. For security, the viewer accepts same-origin drawing URLs.
 
-## 字体 DATA 设置
+## Configuration
 
-字体路径由 [`cad-viewer/viewer-config.js`](cad-viewer/viewer-config.js) 的 `dataBaseUrl` 控制；同一文件的 `language` 设置界面语言（`'zh-CN'` 或 `'en'`）。该地址可以指向 `cad-data` 根目录，也可以直接指向 `fonts/` 目录。
+Runtime settings are defined in [`cad-viewer/viewer-config.js`](cad-viewer/viewer-config.js):
 
-`dataBaseUrl` controls the font-data location, while `language` selects the viewer UI language (`'zh-CN'` or `'en'`).
-
-默认规则：
-
-- 仓库在本机开发地址访问（包括任意端口）：`../cad-data/`
-- GitHub Pages 和其他公开访问地址：`https://mlightcad.gitlab.io/cad-data/`
-
-公开页面使用 `viewer-config.js` 的 CDN 配置。离线或内网部署时，将仓库中的 `viewer-config.local.js` 复制为部署副本的 `viewer-config.js`，使客户端只读取部署服务器自己的 `/cad-data/`，不依赖公网字体服务。
-
-推荐目录结构：
-
-```text
-cad-data/
-└─ fonts/
-   ├─ fonts.json
-   ├─ simsun.woff
-   ├─ txt.shx
-   └─ ...
+```js
+window.CAD_VIEWER_CONFIG = {
+  language: 'en',
+  dataBaseUrl: '../cad-data/',
+};
 ```
 
-查看器会在所有图元显示完毕后读取 `<dataBaseUrl>/fonts/fonts.json`，根据 DWG 文字样式只下载当前图纸需要的字体，然后重新渲染文字。字体清单没有对应字体或下载失败时，继续使用系统字体，不影响图纸打开。
+You can define `window.CAD_VIEWER_CONFIG` before loading `viewer-config.js` to override deployment defaults:
 
-有三种设置方式，优先级从高到低如下：
+```html
+<script>
+  window.CAD_VIEWER_CONFIG = {
+    language: 'en',
+    dataBaseUrl: '/cad-data/'
+  };
+</script>
+<script src="./viewer-config.js"></script>
+```
 
-1. 查询参数，适合临时测试：
+### UI language
 
-   ```text
-   /cad-viewer/?data=https%3A%2F%2Fexample.com%2Fcad-data%2F
-   ```
+Set `language` to one of the following values:
 
-2. 页面加载配置脚本前设置全局配置，适合固定部署：
+```js
+language: 'en'     // English
+language: 'zh-CN'  // Simplified Chinese
+```
 
-   ```html
-   <script>
-     window.CAD_VIEWER_CONFIG = {
-       dataBaseUrl: '/CAD-DATA/'
-     };
-   </script>
-   <script src="./viewer-config.js"></script>
-   ```
+Language is controlled by deployment configuration. The viewer intentionally does not expose a runtime language picker.
 
-3. 直接修改 `viewer-config.js` 的默认地址。
+### Font DATA location
 
-部署版与公开版必须保持以下区别：公开页面加载 `viewer-config.js`；部署时将 `viewer-config.local.js` 重命名覆盖为目标目录中的 `viewer-config.js`。不要把部署副本的本地地址反向提交覆盖公开配置。
+`dataBaseUrl` may point to either a `cad-data` root or directly to a `fonts/` directory. The viewer resolves the font manifest as `<dataBaseUrl>/fonts/fonts.json` when a DATA root is used.
 
-跨域字体地址必须允许浏览器 CORS 访问。为避免相对地址解析错误，建议地址以 `/` 结尾；代码也会自动补齐结尾斜杠。
+The public configuration uses these defaults:
 
-仓库同时提供一个可公开访问的最小示例路由 [`cad-data/open/`](cad-data/open/README.md)，包含 3 个附带 OFL 许可证的字体和精简字体清单：
+- Local development on `localhost`, `127.0.0.1`, or `::1`: `../cad-data/`
+- Other public hosts: the configured public DATA CDN
+
+For offline or private-network deployment, copy [`cad-viewer/viewer-config.local.js`](cad-viewer/viewer-config.local.js) to the deployed `viewer-config.js`. This keeps DATA and font requests on the same server.
+
+The `dataBaseUrl` priority is:
+
+1. URL query parameter `?data=<encoded URL>`
+2. A preconfigured `window.CAD_VIEWER_CONFIG.dataBaseUrl`
+3. The default in `viewer-config.js`
+
+Temporary DATA override example:
 
 ```text
 /cad-viewer/?data=%2Fcad-data%2Fopen%2F
 ```
 
-该目录用于演示自托管 DATA，不替代完整 CAD 字体库。
+Cross-origin DATA servers must allow CORS requests.
 
-## 渐进解析流程
+## CAD DATA and font manifest
 
-1. 主线程把 DWG `ArrayBuffer` 转移给 `parser-worker.js`，避免复制整份文件。
-2. Worker 中的 LibreDWG WASM 解码 DWG。
-3. `convertForViewer` 每 2,000 个图元输出一个批次，只保留显示所需数据和轻量文字样式表。
-4. 主线程先绘制 LINE、LWPOLYLINE 等轮廓并适配视口。
-5. 随后补充圆弧/曲线、尺寸/引线、文字、填充边界和块引用。
-6. 文字先用系统字体快速显示，再校正对齐点、附着点、宽度系数和镜像标志。
-7. 所有图元完成后才载入所需 SHX/TTF/WOFF 字体，并最终重绘文字。
+A self-hosted DATA directory normally looks like this:
 
-## 与原项目的主要差异
+```text
+cad-data/
+└─ fonts/
+   ├─ fonts.json
+   ├─ txt.shx
+   ├─ simsun.woff
+   └─ ...
+```
 
-| 项目 | 原始 `mlightcad/cad-viewer` | 当前版本 |
+`fonts.json` maps CAD font/style names to files that the browser may load. CADViewer reads the drawing's text styles, requests only the required fonts plus configured fallbacks, and continues with system fonts if a font is unavailable.
+
+The repository includes [`cad-data/open/`](cad-data/open/README.md), a small redistributable DATA example containing license-cleared fonts and a minimal manifest. It is suitable for testing the self-hosted DATA route but is not a complete CAD font collection.
+
+Do not publish proprietary or unlicensed CAD fonts. Font files must be reviewed individually for redistribution rights.
+
+## Progressive rendering pipeline
+
+```text
+DWG/DXF file
+    │
+    ▼
+Web Worker + LibreDWG WebAssembly
+    │ lightweight entity batches
+    ▼
+Outline paths ──► curves ──► annotations ──► text ──► hatches/blocks
+    │
+    ▼
+On-demand fonts and final text redraw
+    │
+    ▼
+Pan/zoom interaction released
+```
+
+Important implementation details:
+
+- The worker transfers visible data in batches instead of exposing the complete native drawing structure.
+- Model-space geometry and reusable block definitions are processed separately.
+- Block references and dimensions are materialized incrementally.
+- Text appears first with a fast system-font layout, then receives precise alignment and optional drawing-font rendering.
+- During pan or zoom, a cached bitmap provides immediate feedback; after interaction stops, the viewer redraws vector paths and reports the refinement time.
+
+## Large-drawing memory strategy
+
+CADViewer reduces browser memory pressure by avoiding several expensive structures that a full CAD application may need:
+
+- No complete editable JavaScript CAD database on the main thread.
+- No full Three.js object hierarchy for every visible entity.
+- Transferred `ArrayBuffer` ownership instead of copying the DWG into the worker.
+- Compact drawing paths and lightweight text records retained for rendering.
+- Deferred font downloads and no up-front loading of an entire font library.
+- Progressive block-reference assembly to avoid one long blocking operation.
+
+Actual capacity still depends on the drawing, browser, device memory, entity complexity, nested blocks, hatches, and fonts. This project improves large-file behavior but cannot guarantee that every DWG will fit into every browser.
+
+## Browser and server requirements
+
+The browser must support:
+
+- Web Workers
+- WebAssembly
+- ES modules and dynamic `import()`
+- Canvas 2D and `Path2D`
+- `DOMMatrix`
+- `FontFace` for downloadable outline fonts
+
+The static server must:
+
+- Return the viewer, worker, JavaScript bindings, and WASM files with HTTP 200.
+- Serve `.wasm` as `application/wasm`.
+- Allow access to the configured DATA/font location.
+- Support same-origin access to drawings opened through `?file=`.
+
+An IIS [`web.config`](web.config) is included. Other web servers should configure the equivalent MIME mappings.
+
+## Deployment
+
+Copy the runtime files under `cad-viewer/` to a static web server. At minimum, preserve the relative paths for:
+
+- `index.html`
+- `viewer.js`
+- `viewer-config.js`
+- `online-open.js`
+- `parser-worker.js`
+- `font-engine.js`
+- `bindings/`
+- `vendor/`
+- `wasm/`
+
+For an offline deployment, use `viewer-config.local.js` as the deployed `viewer-config.js`. Keep private DATA, business drawings, logs, credentials, and unlicensed fonts outside the public repository.
+
+See [`PROJECT.md`](PROJECT.md) for architecture and generic self-hosting notes.
+
+## Differences from the upstream viewer
+
+This repository is derived from [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer), but the `large-dwg-viewer` branch is a focused standalone viewer.
+
+| Area | Upstream viewer | This large-DWG viewer |
 | --- | --- | --- |
-| 定位 | 完整 CAD Viewer 框架 | 面向大型 DWG 快速预览的独立只读查看器 |
-| 数据模型 | 构建较完整 JavaScript CAD 数据库 | 只提取可视图元、图层颜色、块定义和文字样式 |
-| 数据传递 | 完成更多场景准备后统一处理 | Worker 分批输出，主线程收到即可消费 |
-| 渲染 | Three.js 场景及插件体系 | Canvas 2D + `Path2D` 分阶段合并绘制 |
-| 内存策略 | 保留完整场景和更多 CAD 数据 | 主线程仅保存绘图路径及少量文字，完成后释放 DWG 原生结构 |
-| 块引用 | 完整场景节点 | 缓存块定义，再分批组合 INSERT/DIMENSION |
-| 字体 | 原文字渲染体系负责字体和布局 | 首屏使用系统字体，图元完成后按需下载字体并重绘 |
-| 功能范围 | 查看、编辑和扩展能力更完整 | 聚焦打开、快速查看、历史、平移和缩放 |
+| Goal | Full CAD viewer framework | Fast, read-only preview of large drawings |
+| Main data model | Rich JavaScript CAD database and scene preparation | Lightweight visible entities and text styles |
+| Rendering | Three.js scene and plugin architecture | Progressive Canvas 2D / `Path2D` rendering |
+| First display | More scene preparation before use | Outline-first progressive display |
+| Fonts | Upstream text-rendering pipeline | Deferred, drawing-specific font loading |
+| Scope | Editing, selection, extension systems | Opening, viewing, history, pan, and zoom |
 
-## 显示正确性修复
+The `main` branch is reserved for upstream tracking. The `large-dwg-viewer` branch contains this implementation and is the default branch of the fork.
 
-- ARC、ELLIPSE、HATCH 曲线先移动到数学起点，避免 Canvas 自动连接不同图元。
-- SPLINE 根据 knots、weights 和控制点进行 B-spline 采样。
-- 解析 `\U+XXXX`、`%%C`、`%%D`、`%%P` 和常见 MTEXT 控制码。
-- 读取真彩色、ACI、ByLayer 与 ByBlock 颜色，并在块引用中继承颜色。
-- TEXT 使用对齐点和水平/垂直对齐；MTEXT 使用九宫格附着点校正位置。
-- SHX 字体使用线段绘制；TTF/OTF/WOFF 通过浏览器 `FontFace` 注册。
+## Known limitations
 
-## 关键文件
+- Read-only: no CAD editing, entity-property panel, selection workflow, or plugin system.
+- External raster images, proxy objects, and uncommon custom entities may not render.
+- Missing CAD fonts fall back to system fonts, so text width and appearance may differ from desktop CAD software.
+- Complex hatches, deeply nested blocks, or malformed drawings may still consume substantial time or memory.
+- The viewer does not replace a desktop CAD application when exact plotting, editing, or full object fidelity is required.
 
-- `cad-viewer/index.html`：页面、历史列表和查看工具栏。
-- `cad-viewer/viewer.js`：渐进消费、块组合、Canvas 渲染、文字重绘和交互。
-- `cad-viewer/viewer-config.js`：字体 DATA 地址配置。
-- `cad-viewer/viewer-config.local.js`：离线部署配置模板；部署时复制为 `viewer-config.js`，固定使用服务器本地 DATA。
-- `cad-viewer/font-engine.js`：浏览器直接加载的字体引擎包。
-- `cad-viewer/src/font-engine-entry.js`：字体引擎源码入口。
-- `cad-viewer/parser-worker.js`：Worker 生命周期、WASM 调用和批次消息。
-- `cad-viewer/bindings/libredwg-web.js`：LibreDWG JavaScript 绑定和 `convertForViewer`。
-- `cad-viewer/wasm/`：LibreDWG WASM 加载脚本和二进制。
-- `cad-viewer/online-open.js`：同源 QueryString 打开及最近历史。
+## Privacy and security
+
+- Files selected with the local file picker are parsed entirely in the browser by this application.
+- `?file=` downloads a same-origin static drawing and processes it in the browser.
+- The viewer does not require an application backend, account, or drawing-upload API.
+- A hosting site may still have normal web-server access logs; review your own deployment environment.
+
+## Repository and licenses
+
+- Fork: [Orua/CADViewer](https://github.com/Orua/CADViewer)
+- Upstream viewer: [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer)
+- WebAssembly bindings: [mlightcad/libredwg-web](https://github.com/mlightcad/libredwg-web)
+- DWG parser: [LibreDWG/libredwg](https://github.com/LibreDWG/libredwg)
+
+This repository contains components under different licenses. Read [`LICENSE.md`](LICENSE.md) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) before redistribution. The LibreDWG WebAssembly components are distributed under GPL-3.0-or-later; application and third-party components retain their respective licenses.
+
+---
+
+# CADViewer：大型 DWG/DXF 浏览器查看器
+
+CADViewer 是一个开源、纯浏览器运行的 DWG 查看器，针对普通网页 CAD 查看器打开大型工程图纸缓慢、长时间白屏、主线程卡死或内存不足的问题进行优化。它使用 Web Worker 和 LibreDWG WebAssembly 在浏览器中解析 DWG/DXF，将轻量图元批次持续发送给主线程，再通过 Canvas 2D 与 `Path2D` 渐进绘制。
+
+如果你正在寻找“大型 DWG 查看器”“在线 DWG 查看器”“浏览器 CAD 查看器”，或者需要预览因数据量太大而无法在普通网页查看器中载入的 AutoCAD 图纸，这个仓库主要解决的就是这类问题。
+
+CADViewer 是只读查看器。它优先解决快速打开、渐进显示、降低主线程内存压力和私有化静态部署，不提供完整 CAD 编辑器的编辑与插件功能。
+
+[English documentation](#cadviewer--fast-large-dwgdxf-viewer-for-the-browser)
+
+## 为什么要做这个项目
+
+很多网页 CAD 查看器需要先完整解码图纸、建立大型 JavaScript 对象数据库、创建完整场景、载入所有字体，最后才显示第一帧。对于大型 DWG，这种流程容易造成长时间白屏、内存占用过高、主线程无响应，甚至浏览器内存溢出。
+
+CADViewer 改用渐进流程：
+
+1. DWG `ArrayBuffer` 直接转移给 Web Worker，不复制整份文件。
+2. LibreDWG WebAssembly 在主界面线程之外解码图纸。
+3. Worker 分批输出轻量可视图元，而不是返回完整 CAD 数据库。
+4. 先显示轮廓，再逐步补充曲线、尺寸、文字、填充和块引用。
+5. 几何图元可见后才按当前图纸需要载入字体。
+6. 全部载入完成前锁定平移与缩放，避免未完整视图被交互打断。
+
+这种架构让大型图纸可以更早看到内容，并尽量保持页面响应。
+
+## 主要特点
+
+- 面向大型工程图纸的 DWG/DXF 渐进解析与显示。
+- 使用 Web Worker 和 LibreDWG WebAssembly，解析过程在浏览器内完成。
+- 使用 Canvas 2D 与 `Path2D`，不为每个图元建立完整 Three.js 场景节点。
+- 先显示轮廓，随后显示曲线、尺寸标注、文字、填充和块引用。
+- 支持打开本地文件和同源 `?file=` 图纸地址。
+- 浏览器保存最近打开的图纸记录。
+- 支持平移、滚轮缩放、全图、框选放大、图纸列表显隐和深浅背景。
+- 平移或缩放时先移动缓存预览图，停止后进行精确矢量重绘。
+- 精绘完成后显示本次精绘渲染耗时。
+- 图纸载入期间锁定图元交互；用户尝试拖动或缩放时显示等待光标和短暂淡出的载入提示。
+- SHX、TTF、OTF、WOFF 字体按需延后加载，不阻塞首屏轮廓。
+- 支持 SHX 线段字形和浏览器 `FontFace` 轮廓字体。
+- 修复常见 CAD 转义字符、文字对齐、ByLayer/ByBlock 颜色继承与曲线路径错误连接问题。
+- 界面支持简体中文和英文，通过 JavaScript 配置选择语言。
+- 纯静态部署，不需要应用服务器和数据库。
+
+## 快速开始
+
+请通过 HTTP 提供仓库文件，不要直接使用 `file://` 打开 `index.html`，因为 Web Worker、WebAssembly、ES Module 和字体请求都需要网页来源。
+
+例如：
+
+```powershell
+python -m http.server 53281
+```
+
+然后打开：
+
+```text
+http://localhost:53281/cad-viewer/
+```
+
+点击“打开图纸”选择本地 `.dwg` 或 `.dxf`。本地文件由浏览器内的查看器解析，不会通过本项目上传到服务器。
+
+打开当前站点已经托管的图纸：
+
+```text
+/cad-viewer/?file=/drawings/example.dwg
+```
+
+如果 `file` 中包含空格或特殊字符，应进行 URL 编码。出于安全考虑，查看器只接受同源图纸地址。
+
+## 配置
+
+运行配置位于 [`cad-viewer/viewer-config.js`](cad-viewer/viewer-config.js)：
+
+```js
+window.CAD_VIEWER_CONFIG = {
+  language: 'zh-CN',
+  dataBaseUrl: '../cad-data/',
+};
+```
+
+也可以在加载 `viewer-config.js` 之前预先设置全局配置：
+
+```html
+<script>
+  window.CAD_VIEWER_CONFIG = {
+    language: 'zh-CN',
+    dataBaseUrl: '/cad-data/'
+  };
+</script>
+<script src="./viewer-config.js"></script>
+```
+
+### 界面语言
+
+`language` 支持以下值：
+
+```js
+language: 'en'     // 英文
+language: 'zh-CN'  // 简体中文
+```
+
+语言由部署配置控制，查看器界面不提供运行时语言选择器。
+
+### 字体 DATA 地址
+
+`dataBaseUrl` 可以指向 `cad-data` 根目录，也可以直接指向 `fonts/` 目录。指向 DATA 根目录时，查看器会读取 `<dataBaseUrl>/fonts/fonts.json`。
+
+公开配置的默认规则：
+
+- 本机 `localhost`、`127.0.0.1` 或 `::1`：`../cad-data/`
+- 其他公开站点：配置的公共 DATA CDN
+
+离线或内网部署时，请将 [`cad-viewer/viewer-config.local.js`](cad-viewer/viewer-config.local.js) 复制为部署目录中的 `viewer-config.js`，使 DATA 与字体请求保持在当前服务器。
+
+`dataBaseUrl` 的优先级：
+
+1. URL 查询参数 `?data=<编码后的地址>`
+2. 页面预先设置的 `window.CAD_VIEWER_CONFIG.dataBaseUrl`
+3. `viewer-config.js` 中的默认值
+
+临时指定 DATA 地址：
+
+```text
+/cad-viewer/?data=%2Fcad-data%2Fopen%2F
+```
+
+跨域 DATA 服务器必须允许 CORS 请求。
+
+## CAD DATA 与字体清单
+
+自托管 DATA 目录通常如下：
+
+```text
+cad-data/
+└─ fonts/
+   ├─ fonts.json
+   ├─ txt.shx
+   ├─ simsun.woff
+   └─ ...
+```
+
+`fonts.json` 将 CAD 字体或样式名称映射到浏览器可以请求的文件。CADViewer 会读取图纸文字样式，只下载当前图纸需要的字体与回退字体；找不到字体时继续使用系统字体，不影响几何图元打开。
+
+仓库提供 [`cad-data/open/`](cad-data/open/README.md) 作为可公开分发的最小 DATA 示例，其中只包含许可证明确的字体和精简清单。它适合测试自托管 DATA 路由，但不是完整 CAD 字体库。
+
+不要公开发布专有或许可证不明确的 CAD 字体。每个字体文件都应单独确认再分发权限。
+
+## 渐进渲染流程
+
+```text
+DWG/DXF 文件
+    │
+    ▼
+Web Worker + LibreDWG WebAssembly
+    │ 轻量图元批次
+    ▼
+轮廓路径 ──► 曲线 ──► 尺寸标注 ──► 文字 ──► 填充/块引用
+    │
+    ▼
+按需加载字体并最终重绘文字
+    │
+    ▼
+释放平移/缩放交互
+```
+
+关键实现：
+
+- Worker 分批传递显示需要的数据，不向主线程暴露完整原生图纸结构。
+- 模型空间图元和可复用块定义分开处理。
+- 块引用与 DIMENSION 分批组合，避免一次长时间阻塞。
+- 文字先使用系统字体快速出现，再校正对齐位置并按需使用图纸字体重绘。
+- 平移或缩放时使用缓存位图即时反馈；交互停止后重新绘制矢量路径并显示精绘耗时。
+
+## 大图内存策略
+
+CADViewer 避免建立完整 CAD 应用通常需要的部分高成本结构，从而降低浏览器内存压力：
+
+- 主线程不保留完整可编辑 JavaScript CAD 数据库。
+- 不为每个可视图元建立完整 Three.js 对象层级。
+- 将 `ArrayBuffer` 所有权转移给 Worker，而不是复制 DWG 文件。
+- 主线程只保留绘图路径和轻量文字记录。
+- 延后加载字体，不会预先下载完整字体库。
+- 分批组合块引用，避免单次长任务阻塞页面。
+
+实际可打开的图纸大小仍取决于图纸内容、浏览器、设备内存、图元复杂度、嵌套块、填充和字体。本项目可以改善大文件表现，但无法保证任意 DWG 都能在任意设备浏览器中打开。
+
+## 浏览器与服务器要求
+
+浏览器需要支持：
+
+- Web Worker
+- WebAssembly
+- ES Module 与动态 `import()`
+- Canvas 2D 与 `Path2D`
+- `DOMMatrix`
+- 用于轮廓字体的 `FontFace`
+
+静态服务器必须：
+
+- 页面、Worker、JavaScript 绑定和 WASM 文件返回 HTTP 200。
+- 将 `.wasm` 作为 `application/wasm` 返回。
+- 允许访问配置的 DATA/字体地址。
+- 允许 `?file=` 读取同源图纸。
+
+仓库提供 IIS [`web.config`](web.config)。其他服务器需要配置等价的 MIME 映射。
+
+## 部署
+
+将 `cad-viewer/` 下的运行文件复制到静态服务器，并保持下列文件的相对路径：
+
+- `index.html`
+- `viewer.js`
+- `viewer-config.js`
+- `online-open.js`
+- `parser-worker.js`
+- `font-engine.js`
+- `bindings/`
+- `vendor/`
+- `wasm/`
+
+离线部署时，使用 `viewer-config.local.js` 作为部署版 `viewer-config.js`。不要把私有 DATA、业务图纸、日志、凭据或未授权字体提交到公开仓库。
+
+架构与通用自托管说明见 [`PROJECT.md`](PROJECT.md)。
+
+## 与上游项目的区别
+
+本仓库派生自 [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer)，但 `large-dwg-viewer` 分支是专注大图的独立查看器。
+
+| 项目 | 上游查看器 | 当前大型 DWG 查看器 |
+| --- | --- | --- |
+| 目标 | 完整 CAD Viewer 框架 | 大型图纸快速只读预览 |
+| 主数据模型 | 丰富的 JavaScript CAD 数据库与场景准备 | 轻量可视图元和文字样式 |
+| 渲染 | Three.js 场景与插件架构 | Canvas 2D / `Path2D` 渐进绘制 |
+| 首次显示 | 完成更多场景准备后使用 | 先显示轮廓，再逐步补全 |
+| 字体 | 上游文字渲染流程 | 图元完成后按图纸需要加载字体 |
+| 功能范围 | 编辑、选择和扩展体系 | 打开、查看、历史、平移和缩放 |
+
+`main` 分支用于跟踪上游；`large-dwg-viewer` 分支包含当前实现，也是 Fork 的默认分支。
 
 ## 当前限制
 
-- 这是只读预览器，不包含原项目的编辑、实体选择和插件体系。
-- 字体仓库缺少图纸字体时会退回系统字体，字形宽度可能与 CAD 软件不同。
-- 外部 IMAGE、代理实体和少见自定义实体可能无法显示。
-- 为控制内存，不构建完整 JavaScript CAD 数据库；实体属性查询或编辑仍应使用原项目。
+- 只读，不提供 CAD 编辑、图元属性面板、选择流程或插件系统。
+- 外部图片、代理实体和少见自定义实体可能无法显示。
+- 缺少 CAD 字体时会退回系统字体，文字宽度与外观可能不同于桌面 CAD 软件。
+- 复杂填充、深层嵌套块或损坏图纸仍可能占用大量时间和内存。
+- 需要精确打印、编辑或完整对象一致性时，不能替代桌面 CAD 软件。
 
-## 仓库与分支
+## 隐私与安全
 
-- 当前仓库：[Orua/CADViewer](https://github.com/Orua/CADViewer)
+- 通过本地文件选择器打开的图纸由本应用完全在浏览器内解析。
+- `?file=` 从当前站点下载同源静态图纸，并在浏览器中处理。
+- 查看器不需要应用后端、账号或图纸上传 API。
+- 部署网站仍可能产生普通 Web 服务器访问日志，请根据自己的环境评估。
+
+## 仓库与许可证
+
+- Fork：[Orua/CADViewer](https://github.com/Orua/CADViewer)
 - 上游 Viewer：[mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer)
-- DWG WebAssembly 绑定：[mlightcad/libredwg-web](https://github.com/mlightcad/libredwg-web)
-- 底层解析器：[LibreDWG/libredwg](https://github.com/LibreDWG/libredwg)
+- WebAssembly 绑定：[mlightcad/libredwg-web](https://github.com/mlightcad/libredwg-web)
+- DWG 解析器：[LibreDWG/libredwg](https://github.com/LibreDWG/libredwg)
 
-分支职责：
-
-- `main`：保留上游原始分支，用于跟踪上游更新。
-- `large-dwg-viewer`：当前大型 DWG 渐进查看器，也是仓库默认分支。
-
-本地 `origin` 指向当前 Fork，`upstream` 指向原项目。不要把 `upstream/main` 直接合并到 `large-dwg-viewer`；应先获取上游提交，再选择性移植需要的修复。
-
-通用的架构、自托管和发布说明见 [`PROJECT.md`](PROJECT.md)。
-
-## 许可证与数据
-
-- 本仓库包含不同许可证覆盖的组件，详情见 [`LICENSE.md`](LICENSE.md) 与 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
-- 从 `mlightcad/cad-viewer` 派生的应用代码保留其 MIT License。
-- DWG 解析组件来自 `mlightcad/libredwg-web` / LibreDWG，并按 GPL-3.0-or-later 分发。
-- SHX 解析器许可证见 `cad-viewer/vendor/shx-parser-LICENSE.txt`。
-- 公开仓库不包含业务 DWG、浏览器历史、备份、构建缓存或测试图纸。
-- 本地 `cad-data/fonts` 中部分字体来源和再分发许可证不明确，因此不提交到公开仓库；只提交 `cad-data/open` 中许可证明确的最小示例资源。公开环境默认仍使用上游字体地址。
+本仓库包含多种许可证覆盖的组件。再分发前请阅读 [`LICENSE.md`](LICENSE.md) 与 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。LibreDWG WebAssembly 组件按 GPL-3.0-or-later 分发，应用代码与其他第三方组件保留各自许可证。
