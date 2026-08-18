@@ -1,5 +1,6 @@
 ﻿# Agent records, temporary tools, backups, and generated reports
 agent/
+cad-data/
 
 # Proprietary or large drawing inputs
 CAD-DATA/

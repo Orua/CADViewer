@@ -1,4 +1,4 @@
-﻿# CadViewer：大型 DWG 渐进式浏览器查看器
+﻿# CADViewer：大型 DWG 渐进式浏览器查看器
 
 这是一个从 [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer) 演化出来的只读 DWG 查看器，重点解决大型图纸在浏览器中首次显示慢、JavaScript 内存占用高和主线程长时间无响应的问题。
 
@@ -8,6 +8,7 @@
 
 | 项目 | 原始 `mlightcad/cad-viewer` | 当前版本 |
 | --- | --- | --- |
+| 运行核心 | 完整场景及插件运行时 | Web Worker + LibreDWG WASM + Canvas 2D 渐进预览 |
 | 定位 | 完整 CAD Viewer 框架，包含较完整的数据模型、渲染和扩展能力 | 面向大型 DWG 快速预览的独立只读查看器 |
 | 解析结果 | 将 DWG 转换为较完整的 JavaScript CAD 数据库 | `convertForViewer` 只提取可视图元，跳过编辑表、字典、布局等非首屏数据 |
 | 数据传递 | 解析完成后再交给查看器组织场景 | Web Worker 每 2,000 个图元发送一个批次，主线程收到即可消费 |
@@ -79,6 +80,8 @@
 git remote add upstream https://github.com/mlightcad/cad-viewer.git
 git fetch upstream
 ```
+
+项目定位、Goldenluck 本地测试和 FTP 部署规则见 [PROJECT.md](PROJECT.md)。
 
 由于 `large-dwg-viewer` 已经从 TypeScript/Three.js 工程重构成独立静态查看器，不建议把 `upstream/main` 直接合并进该分支；更适合先 `git fetch upstream`，再对照具体提交选择性移植修复。
 
