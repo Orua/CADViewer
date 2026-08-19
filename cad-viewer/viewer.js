@@ -18,7 +18,20 @@ const fileSidebarColumn = document.querySelector('#fileSidebarColumn');
 const zoomWindow = document.querySelector('#zoomWindow');
 const loadingInteractionHint = document.querySelector('#loadingInteractionHint');
 const configuredDataBaseUrl = window.CAD_VIEWER_CONFIG?.dataBaseUrl;
+const phoneViewport = window.matchMedia('(max-width: 767px)');
 window.cadViewerFontState = { dataBaseUrl: configuredDataBaseUrl, phase: 'idle' };
+
+function setFileSidebarVisible(visible) {
+  fileSidebarColumn.classList.toggle('is-hidden', !visible);
+  toolSidebarButton.classList.toggle('is-active', visible);
+}
+
+function syncSidebarForViewport() {
+  setFileSidebarVisible(!phoneViewport.matches);
+}
+
+syncSidebarForViewport();
+phoneViewport.addEventListener('change', syncSidebarForViewport);
 
 const MESSAGES = {
   'zh-CN': {
@@ -1200,8 +1213,7 @@ toolPanButton.addEventListener('click', () => setInteractionMode('pan'));
 toolFitButton.addEventListener('click', fitView);
 toolZoomWindowButton.addEventListener('click', () => setInteractionMode('zoom-window'));
 toolSidebarButton.addEventListener('click', () => {
-  const isVisible = !fileSidebarColumn.classList.toggle('is-hidden');
-  toolSidebarButton.classList.toggle('is-active', isVisible);
+  setFileSidebarVisible(fileSidebarColumn.classList.contains('is-hidden'));
 });
 toolBackgroundButton.addEventListener('click', () => {
   backgroundColor = backgroundColor === '#090b0e' ? '#f8fafc' : '#090b0e';
