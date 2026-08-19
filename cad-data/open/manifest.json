@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "route": "/cad-data/open/",
+  "fonts": [
+    {
+      "file": "fonts/Basic-Regular.ttf",
+      "source": "https://github.com/google/fonts/tree/main/ofl/basic",
+      "license": "licenses/Basic-OFL.txt",
+      "sha256": "077F7245F6459045495B1CA0493F2B426C421D2112D10B48A38FF8858A07397A"
+    },
+    {
+      "file": "fonts/TenorSans-Regular.ttf",
+      "source": "https://github.com/google/fonts/tree/main/ofl/tenorsans",
+      "license": "licenses/TenorSans-OFL.txt",
+      "sha256": "350C882FA9F19927ED108371691D393D5DC1C209EDDE8472CAB8AA8013241366"
+    },
+    {
+      "file": "fonts/VT323-Regular.ttf",
+      "source": "https://github.com/google/fonts/tree/main/ofl/vt323",
+      "license": "licenses/VT323-OFL.txt",
+      "sha256": "CF4DE751ADA78CEAC033DBE16A687742939995B77BC2A052AE17A4957958594D"
+    }
+  ]
+}

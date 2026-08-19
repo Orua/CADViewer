@@ -1,0 +1,20 @@
+[
+  {
+    "file": "Basic-Regular.ttf",
+    "name": ["Basic", "Basic Regular", "Standard"],
+    "type": "mesh",
+    "description": "Small sans-serif sample; Standard is provided as an explicit fallback alias."
+  },
+  {
+    "file": "TenorSans-Regular.ttf",
+    "name": ["Tenor Sans", "TenorSans", "Tenor Sans Regular"],
+    "type": "mesh",
+    "description": "Open-licensed sans-serif sample."
+  },
+  {
+    "file": "VT323-Regular.ttf",
+    "name": ["VT323", "VT323 Regular"],
+    "type": "mesh",
+    "description": "Open-licensed monospaced display font sample."
+  }
+]
