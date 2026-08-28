@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="data:," />
-    <title>CAD &amp; 3D Drawing Viewer | GOLDENLUCK</title>
+    <title>CAD &amp; 3D Drawing Viewer</title>
     <style>
       * {
         margin: 0;
@@ -48,6 +48,17 @@
       .goldenluck-tools-nav a { padding: .42rem .65rem; border-radius: 5px; color: #5f3300; font-size: .8rem; font-weight: 700; text-decoration: none; }
       .goldenluck-tools-nav a:hover { background: #fff0d9; }
       .goldenluck-privacy { color: #56616a !important; font-weight: 600 !important; }
+      .trial-notice {
+        flex: 0 0 auto;
+        padding: .4rem 1rem;
+        border-bottom: 1px solid #dfd4c5;
+        background: #fff8ec;
+        color: #704013;
+        font-size: .78rem;
+        font-weight: 700;
+        line-height: 1.45;
+        text-align: center;
+      }
       .file-sidebar { background: #f4f0e8 !important; border-color: #dfd4c5 !important; }
       .sidebar-title { color: #7d4100 !important; }
       .sidebar-help { color: #56616a !important; }
@@ -732,9 +743,9 @@
   </head>
   <body class="fast-viewer-mode">
     <header class="goldenluck-tools-header">
-      <a class="goldenluck-tools-brand" href="https://www.goldenluck-hk.com/" aria-label="GOLDENLUCK corporate website">
-        <span class="goldenluck-tools-mark" aria-hidden="true">GL</span>
-        <span><strong>GOLDENLUCK</strong><small>METAL GROUP · ONLINE TOOLS</small></span>
+      <a class="goldenluck-tools-brand" href="/wiki/en/tools/cad-viewer/" aria-label="CAD and 3D Viewer guide">
+        <span class="goldenluck-tools-mark" aria-hidden="true">CAD</span>
+        <span><strong>CAD &amp; 3D VIEWER</strong><small>BROWSER TECHNOLOGY TRIAL</small></span>
       </a>
       <nav class="goldenluck-tools-nav" aria-label="Related links">
         <span class="goldenluck-privacy">Files stay in your browser</span>
@@ -746,6 +757,7 @@
         <span data-goldenluck-copyright style="color:#6b6259;font-size:.68rem;white-space:nowrap">© 2005–2026 GOLDENLUCK Metal Group Ltd.</span>
       </nav>
     </header>
+    <div class="trial-notice" role="note">Browser technology trial; not recommended for commercial use. / 浏览器技术测试尝试，不建议商用。</div>
     <div class="app-shell">
       <div class="file-sidebar-column" id="fileSidebarColumn">
       <aside class="file-sidebar" id="fileSidebar">
