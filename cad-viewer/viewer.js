@@ -23,6 +23,15 @@ const fileSidebarColumn = document.querySelector('#fileSidebarColumn');
 const zoomWindow = document.querySelector('#zoomWindow');
 const loadingInteractionHint = document.querySelector('#loadingInteractionHint');
 const viewerPane = document.querySelector('#viewerPane');
+
+const requestedOpenMode = new URLSearchParams(window.location.search).get('open');
+if (requestedOpenMode === 'cad') {
+  fileInput.accept = '.dwg,.dxf';
+  document.body.dataset.openMode = 'cad';
+} else if (requestedOpenMode === 'stl') {
+  fileInput.accept = '.stl';
+  document.body.dataset.openMode = 'stl';
+}
 const configuredDataBaseUrl = window.CAD_VIEWER_CONFIG?.dataBaseUrl;
 const phoneViewport = window.matchMedia('(max-width: 767px)');
 window.cadViewerFontState = { dataBaseUrl: configuredDataBaseUrl, phase: 'idle' };
