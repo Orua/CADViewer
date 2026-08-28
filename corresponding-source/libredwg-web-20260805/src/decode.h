@@ -1,0 +1,210 @@
+/*****************************************************************************/
+/*  LibreDWG - free implementation of the DWG file format                    */
+/*                                                                           */
+/*  Copyright (C) 2009-2019 Free Software Foundation, Inc.                   */
+/*                                                                           */
+/*  This library is free software, licensed under the terms of the GNU       */
+/*  General Public License as published by the Free Software Foundation,     */
+/*  either version 3 of the License, or (at your option) any later version.  */
+/*  You should have received a copy of the GNU General Public License        */
+/*  along with this program.  If not, see <http://www.gnu.org/licenses/>.    */
+/*****************************************************************************/
+
+/*
+ * decode.h: decoding function prototypes
+ * written by Felipe Castro
+ * modified by Felipe Corrêa da Silva Sances
+ * modified by Rodrigo Rodrigues da Silva
+ * modified by Reini Urban
+ */
+
+#ifndef DECODE_H
+#define DECODE_H
+
+#include "bits.h"
+#include "dwg.h"
+#include "decode_r11.h"
+
+#ifdef IN_DXF_H
+#  error in_dxf.h must be included after decode.h because of FORMAT_BD
+#endif
+
+#define REFS_PER_REALLOC 16384
+
+typedef enum ENTITY_SECTION_INDEX_R11
+{
+  ENTITIES_SECTION_INDEX = 0,
+  BLOCKS_SECTION_INDEX,
+  EXTRAS_SECTION_INDEX
+} EntitySectionIndexR11;
+
+EXPORT int dwg_decode (Bit_Chain *restrict dat, Dwg_Data *restrict dwg);
+int dwg_decode_unknown_bits (Bit_Chain *restrict dat,
+                             Dwg_Object *restrict obj);
+int dwg_decode_unknown_rest (Bit_Chain *restrict dat,
+                             Dwg_Object *restrict obj);
+Dwg_Object_Ref *dwg_find_objectref (const Dwg_Data *restrict dwg,
+                                    const Dwg_Object *restrict obj);
+
+int dwg_decode_BLOCK_HEADER (Bit_Chain *restrict dat,
+                             Dwg_Object *restrict obj);
+int dwg_decode_LAYER (Bit_Chain *restrict dat, Dwg_Object *restrict obj);
+int dwg_decode_STYLE (Bit_Chain *restrict dat, Dwg_Object *restrict obj);
+int dwg_decode_LTYPE (Bit_Chain *restrict dat, Dwg_Object *restrict obj);
+int dwg_decode_VIEW (Bit_Chain *restrict dat, Dwg_Object *restrict obj);
+int dwg_decode_UCS (Bit_Chain *restrict dat, Dwg_Object *restrict obj);
+int dwg_decode_VPORT (Bit_Chain *restrict dat, Dwg_Object *restrict obj);
+int dwg_decode_APPID (Bit_Chain *restrict dat, Dwg_Object *restrict obj);
+int dwg_decode_DIMSTYLE (Bit_Chain *restrict dat, Dwg_Object *restrict obj);
+int dwg_decode_VX_TABLE_RECORD (Bit_Chain *restrict dat,
+                                Dwg_Object *restrict obj);
+
+// reused with the importers
+void decode_BACKGROUND_type (const Dwg_Object *obj);
+
+/*------------------------------------------------------------------------------
+ * Functions reused with decode_r11
+ */
+int dwg_decode_eed (Bit_Chain *restrict dat, Dwg_Object_Object *restrict obj);
+
+/*------------------------------------------------------------------------------
+ * Functions reused with decode_r2007
+ */
+Dwg_Object_Ref *dwg_decode_handleref (Bit_Chain *restrict hdl_dat,
+                                      Dwg_Object *restrict obj,
+                                      Dwg_Data *restrict dwg);
+Dwg_Object_Ref *dwg_decode_handleref_with_code (Bit_Chain *restrict hdl_dat,
+                                                Dwg_Object *restrict obj,
+                                                Dwg_Data *restrict dwg,
+                                                unsigned int code);
+int dwg_decode_header_variables (Bit_Chain *dat, Bit_Chain *hdl_dat,
+                                 Bit_Chain *str_dat, Dwg_Data *restrict dwg);
+int dwg_decode_add_object (Dwg_Data *restrict dwg, Bit_Chain *dat,
+                           Bit_Chain *hdl_dat, size_t address);
+int obj_handle_stream (Bit_Chain *restrict dat, Dwg_Object *restrict obj,
+                       Bit_Chain *restrict hdl_dat);
+void bfr_read (void *restrict dst, BITCODE_RC *restrict *restrict src,
+               size_t size);
+void bfr_read_32 (void *restrict dst, BITCODE_RC *restrict *restrict src,
+                  size_t size);
+void bfr_read_64 (void *restrict dst, BITCODE_RC *restrict *restrict src,
+                  size_t size);
+
+/* reused with decode2.c */
+int dwg_decode_entity (Bit_Chain *restrict dat, Bit_Chain *restrict hdl_dat,
+                       Bit_Chain *str_dat, Dwg_Object_Entity *restrict ent);
+int dwg_decode_object (Bit_Chain *dat, Bit_Chain *hdl_dat, Bit_Chain *str_dat,
+                       Dwg_Object_Object *restrict obj);
+
+/* reused with decode2.c */
+Dwg_Resbuf *dwg_decode_xdata (Bit_Chain *restrict dat,
+                              Dwg_Object_XRECORD *restrict obj,
+                              BITCODE_BL xdata_size);
+
+/* reused with free */
+void dwg_free_xdata_resbuf (Dwg_Resbuf *restrict rbuf);
+
+/* reused with encode */
+int decompress_R2004_section (Bit_Chain *restrict src,
+                              Bit_Chain *restrict dec);
+void decrypt_R2004_header (BITCODE_RC *restrict dest,
+                           const BITCODE_RC *restrict src, size_t size);
+void dwg_resolve_objectrefs_silent (Dwg_Data *restrict dwg);
+uint32_t dwg_section_page_checksum (const uint32_t seed,
+                                    Bit_Chain *restrict dat, int32_t size,
+                                    bool skip_checksum);
+unsigned int section_max_decomp_size (const Dwg_Data *dwg,
+                                      const Dwg_Section_Type id);
+
+/* reused with out_dxf */
+char *dwg_dim_blockname (Dwg_Data *restrict dwg,
+                         const Dwg_Object *restrict obj);
+
+int dwg_validate_INSERT (Dwg_Object *restrict obj);
+int dwg_validate_POLYLINE (Dwg_Object *restrict obj);
+/* reused with many */
+int dwg_fixup_BLOCKS_entities (Dwg_Data *restrict dwg);
+Dwg_Object_Ref *dwg_add_entity_link (Dwg_Data *restrict dwg,
+                                     const Dwg_Object *restrict first,
+                                     const char *restrict field,
+                                     const BITCODE_RLL handle_val);
+void dxf_3dsolid_revisionguid (Dwg_Entity_3DSOLID *_obj);
+
+/* page map, from decode_r2007.c. Exposed for read_data_section() unit
+   tests (GHSA-pcp5-hv9w-8f78 regression). */
+typedef struct _r2007_page
+{
+  int64_t id;
+  uint64_t size;
+  uint64_t offset;
+  struct _r2007_page *next;
+} r2007_page;
+
+/* section page */
+typedef struct _r2007_section_page
+{
+  uint64_t offset;
+  uint64_t size;
+  int64_t id;
+  uint64_t uncomp_size; // src_size
+  uint64_t comp_size;
+  uint64_t checksum;
+  uint64_t crc;
+} r2007_section_page;
+
+/* section map */
+typedef struct _r2007_section
+{
+  uint64_t data_size; // max size of page
+  uint64_t max_size;
+  int64_t encrypted;
+  uint64_t hashcode;   // checksum in r2004
+  int64_t name_length; // 0x22
+  int64_t unknown;     // 0x00
+  int64_t encoded;
+  int64_t num_pages;
+  DWGCHAR *name;
+  Dwg_Section_Type type;
+  r2007_section_page **pages;
+  struct _r2007_section *next;
+} r2007_section;
+
+/* from decode_r2007.c */
+int obj_string_stream (Bit_Chain *dat, Dwg_Object *restrict obj,
+                       Bit_Chain *str_dat);
+size_t obj_stream_position (Bit_Chain *restrict dat,
+                            Bit_Chain *restrict hdl_dat,
+                            Bit_Chain *restrict str_dat);
+int decompress_r2007 (BITCODE_RC *restrict dst, unsigned dst_size,
+                      BITCODE_RC *restrict src, unsigned src_size,
+                      const BITCODE_RC *restrict dst_end);
+int read_data_section (Bit_Chain *sec_dat, Bit_Chain *dat,
+                       r2007_section *restrict sections_map,
+                       r2007_page *restrict pages_map,
+                       Dwg_Section_Type sec_type);
+
+void read_r2007_init (Dwg_Data *restrict dwg);
+int read_r2007_meta_data (Bit_Chain *dat, Bit_Chain *hdl_dat,
+                          Dwg_Data *restrict dwg);
+void section_string_stream (Dwg_Data *restrict dwg, Bit_Chain *restrict dat,
+                            BITCODE_RL bitsize, Bit_Chain *restrict str);
+/* for decode_r11.c */
+int decode_r11_auxheader (Bit_Chain *restrict dat, Dwg_Data *restrict dwg);
+int decode_preR13_DIMENSION (Bit_Chain *restrict dat,
+                             Dwg_Object *restrict obj);
+int decode_preR13_sentinel (const Dwg_Sentinel sentinel,
+                            const char *restrict sentinel_name,
+                            Bit_Chain *restrict dat, Dwg_Data *restrict dwg);
+int decode_preR13_entities (BITCODE_RL start, BITCODE_RL end,
+                            unsigned num_entities, BITCODE_RL size,
+                            Bit_Chain *restrict dat, Dwg_Data *restrict dwg,
+                            const EntitySectionIndexR11 entity_section_index);
+
+/* from dwg.c */
+// from dat.fh
+EXPORT int dat_read_size (Bit_Chain *restrict dat);
+EXPORT int dat_read_file (Bit_Chain *restrict dat, FILE *restrict fp,
+                          const char *restrict filename);
+EXPORT int dat_read_stream (Bit_Chain *restrict dat, FILE *restrict fp);
+
+#endif

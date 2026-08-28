@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Open-source licences | GOLDENLUCK CAD Viewer</title>
+    <style>
+      :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #26313a; background: #f4f0e8; }
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem max(1rem, calc((100vw - 980px) / 2)); background: #fff; border-bottom: 1px solid #dfd4c5; }
+      header a { color: #5f3300; font-weight: 700; text-decoration: none; }
+      .brand { display: flex; align-items: center; gap: .7rem; }
+      .mark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 6px; background: #a95800; color: #fff; font-family: Georgia, serif; }
+      nav { display: flex; flex-wrap: wrap; gap: .75rem; }
+      main { width: min(980px, calc(100% - 2rem)); margin: 2rem auto; padding: clamp(1.2rem, 3vw, 2.5rem); background: #fff; border: 1px solid #dfd4c5; border-radius: 10px; box-shadow: 0 12px 32px rgba(61, 43, 23, .08); }
+      h1, h2 { color: #5f3300; }
+      h1 { margin-top: 0; }
+      h2 { margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid #eadfce; }
+      p, li { line-height: 1.7; }
+      a { color: #8a4800; }
+      .notice { padding: 1rem 1.1rem; border-left: 4px solid #ef8b00; background: #fff8ec; }
+      code { overflow-wrap: anywhere; }
+      footer { margin-top: 2rem; color: #6b6259; font-size: .9rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="https://www.goldenluck-hk.com/"><span class="mark">GL</span><span>GOLDENLUCK<br /><small>METAL GROUP · ONLINE TOOLS</small></span></a>
+      <nav aria-label="Related links">
+        <a href="./">CAD Viewer</a>
+        <a href="/wiki/en/tools/cad-viewer/">Wiki guide</a>
+        <a href="https://github.com/Orua/CADViewer" target="_blank" rel="noopener">Public repository</a>
+      </nav>
+    </header>
+    <main>
+      <h1>Open-source licences / 开源许可</h1>
+      <p class="notice">This page identifies the principal open-source components distributed with the viewer. Individual files and components remain subject to their own licence terms. / 本页列出随查看器发布的主要开源组件；各文件及组件仍分别受其自身许可证约束。</p>
+
+      <h2>Project repository / 项目仓库</h2>
+      <p><a href="https://github.com/Orua/CADViewer" target="_blank" rel="noopener">Golden Luck CADViewer on GitHub</a>. The matching LibreDWG source, modification markers, build instructions and distributed-file checksums are recorded in <a href="https://github.com/Orua/CADViewer/blob/main/CORRESPONDING_SOURCE.md" target="_blank" rel="noopener">CORRESPONDING_SOURCE.md</a>.</p>
+
+      <h2>Application code / 应用代码</h2>
+      <p>The application is derived from <a href="https://github.com/mlightcad/cad-viewer" target="_blank" rel="noopener">mlightcad/cad-viewer</a> and includes code under the MIT License. Because the distributed viewer directly integrates GPL-3.0-or-later LibreDWG components, the combined viewer distribution is offered under GPL-3.0-or-later. The original MIT terms remain available for independently used MIT-covered source files. Retained texts: <a href="./LICENSES/MIT.txt">MIT</a> and <a href="./LICENSES/GPL-3.0-or-later.txt">GPL-3.0-or-later</a>.</p>
+
+      <h2>DWG parser / DWG 解析器</h2>
+      <p>The bundled LibreDWG JavaScript and WebAssembly components are distributed under GPL-3.0-or-later. This release uses GNU LibreDWG <code>0.14.8556</code> and <code>mlightcad/libredwg-web 0.7.9</code> with the modifications and build information published in the corresponding-source directory. See the <a href="./LICENSES/GPL-3.0-or-later.txt">GPL licence text</a>, <a href="https://github.com/Orua/CADViewer/tree/main/corresponding-source/libredwg-web-20260805" target="_blank" rel="noopener">matching source snapshot</a>, <a href="https://github.com/mlightcad/libredwg-web" target="_blank" rel="noopener">mlightcad/libredwg-web</a> and <a href="https://github.com/LibreDWG/libredwg" target="_blank" rel="noopener">GNU LibreDWG source</a>.</p>
+
+      <h2>3D import / 3D 导入</h2>
+      <p>The STEP, IGES and BREP import path uses <a href="https://github.com/kovacsv/occt-import-js" target="_blank" rel="noopener">occt-import-js 0.0.23</a> under LGPL-2.1. It incorporates <a href="https://github.com/Open-Cascade-SAS/OCCT" target="_blank" rel="noopener">Open CASCADE Technology</a>, which uses LGPL-2.1 with the Open CASCADE exception. Retained texts: <a href="./vendor/occt-import-js/license.occt-import-js.txt">occt-import-js licence</a>, <a href="./vendor/occt-import-js/license.occt.txt">Open CASCADE licence</a> and <a href="./vendor/occt-import-js/OCCT_LGPL_EXCEPTION.txt">Open CASCADE exception</a>.</p>
+
+      <h2>Other bundled components / 其他组件</h2>
+      <ul>
+        <li>The SHX parser notice is available in <a href="./vendor/shx-parser-LICENSE.txt">shx-parser-LICENSE.txt</a>.</li>
+        <li>The font engine bundle includes the SHX parser and supporting libraries such as iconv-lite, buffer, ieee754 and safe-buffer; their applicable notices must be retained when redistributing the bundle.</li>
+        <li>The public viewer self-hosts the Basic, Tenor Sans and VT323 drawing-font data sets. Their Open Font License texts are retained under <a href="../cad-data/open/licenses/">the public font-data directory</a>. Other user-supplied font files remain governed by their own licences.</li>
+      </ul>
+
+      <footer>© 2005–2026 GOLDENLUCK Metal Group Ltd. · <a href="mailto:zzp@goldenluck.hk">zzp@goldenluck.hk</a></footer>
+    </main>
+  </body>
+</html>

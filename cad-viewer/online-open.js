@@ -24,7 +24,7 @@
   }
 
   function getFileName(url) {
-    var pathname = new URL(url).pathname;
+    var pathname = new URL(url, window.location.href).pathname;
     var segments = pathname.split("/");
     return decodeURIComponent(segments[segments.length - 1] || t("drawingFile", null, "图纸文件"));
   }

@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
   <title>CADViewer</title>
   <style>
     * { box-sizing: border-box; }
@@ -19,12 +20,12 @@
   <main class="app">
     <header>
       <h1>CADViewer</h1>
-      <p>在下方查看器中选择并打开 DWG 或 DXF 图纸。</p>
+      <p>在下方查看器中统一打开 DWG、DXF、STL、STEP、IGES 与 BREP 图纸或模型。</p>
     </header>
     <iframe id="cadViewerFrame" title="CADViewer"></iframe>
   </main>
   <script>
-    document.getElementById('cadViewerFrame').src = 'cad-viewer/index.html?v=20260818-data-routing-1' + window.location.search.replace(/^\?/, '&');
+    document.getElementById('cadViewerFrame').src = 'cad-viewer/index.html?v=20260825-unified-model-viewer-1' + window.location.search.replace(/^\?/, '&');
   </script>
 </body>
 </html>

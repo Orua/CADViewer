@@ -1,4 +1,6 @@
-# CADViewer — Fast Large DWG/DXF Viewer for the Browser
+# CADViewer — Unified DWG/DXF/STL/STEP Viewer for the Browser
+
+The same open button, drag-and-drop target, recent-file list, and navigation toolbar open DWG, DXF, STL, STEP/STP, IGES/IGS, and BREP/BRP. Three-dimensional formats are tessellated locally with OpenCascade WebAssembly and rendered with WebGL; selected files are not uploaded.
 
 CADViewer is an open-source, browser-based DWG viewer designed for large engineering drawings that are slow or fail to load in conventional web CAD viewers. It parses DWG/DXF files inside the browser with a Web Worker and LibreDWG WebAssembly, streams lightweight entity batches to the main thread, and progressively renders them with Canvas 2D and `Path2D`.
 
@@ -25,6 +27,8 @@ This architecture is intended to make very large drawings useful sooner while ke
 
 ## Features
 
+- One file entry and shared toolbar for DWG, DXF, STL, STEP/STP, IGES/IGS, and BREP/BRP.
+- Local WebGL rendering for three-dimensional mesh and engineering-solid formats.
 - Progressive DWG/DXF parsing and rendering for large engineering drawings.
 - Browser-only processing with a Web Worker and LibreDWG WebAssembly.
 - Canvas 2D and `Path2D` rendering without a complete Three.js CAD scene.
@@ -57,7 +61,7 @@ Then open:
 http://localhost:53281/cad-viewer/
 ```
 
-Use the **Open drawing** button to select a local `.dwg` or `.dxf` file. Local files are parsed in the browser and are not uploaded by this viewer.
+Use the **Open drawing/model** button to select a local DWG, DXF, STL, STEP/STP, IGES/IGS, or BREP/BRP file. Local files are parsed in the browser and are not uploaded by this viewer.
 
 To open a drawing already hosted on the same origin:
 
@@ -74,7 +78,7 @@ Runtime settings are defined in [`cad-viewer/viewer-config.js`](cad-viewer/viewe
 ```js
 window.CAD_VIEWER_CONFIG = {
   language: 'en',
-  dataBaseUrl: '../cad-data/',
+  dataBaseUrl: '../cad-data/open/',
 };
 ```
 
@@ -107,8 +111,7 @@ Language is controlled by deployment configuration. The viewer intentionally doe
 
 The public configuration uses these defaults:
 
-- Local development on `localhost`, `127.0.0.1`, or `::1`: `../cad-data/`
-- Other public hosts: the configured public DATA CDN
+- Local development and public deployments use the bundled, licence-cleared `../cad-data/open/` sample by default.
 
 For offline or private-network deployment, copy [`cad-viewer/viewer-config.local.js`](cad-viewer/viewer-config.local.js) to the deployed `viewer-config.js`. This keeps DATA and font requests on the same server.
 
@@ -141,7 +144,7 @@ cad-data/
 
 `fonts.json` maps CAD font/style names to files that the browser may load. CADViewer reads the drawing's text styles, requests only the required fonts plus configured fallbacks, and continues with system fonts if a font is unavailable.
 
-The repository includes [`cad-data/open/`](cad-data/open/README.md), a small redistributable DATA example containing license-cleared fonts and a minimal manifest. It is suitable for testing the self-hosted DATA route but is not a complete CAD font collection.
+The repository includes [`cad-data/open/`](cad-data/open/README.md) as the default self-hosted DATA set. It contains only licence-cleared fonts and a minimal manifest; it is suitable for public deployment but is not a complete CAD font collection.
 
 Do not publish proprietary or unlicensed CAD fonts. Font files must be reviewed individually for redistribution rights.
 
@@ -210,6 +213,7 @@ Copy the runtime files under `cad-viewer/` to a static web server. At minimum, p
 
 - `index.html`
 - `viewer.js`
+- `model-viewer.js`
 - `viewer-config.js`
 - `online-open.js`
 - `parser-worker.js`
@@ -224,7 +228,7 @@ See [`PROJECT.md`](PROJECT.md) for architecture and generic self-hosting notes.
 
 ## Differences from the upstream viewer
 
-This repository is derived from [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer), but the `large-dwg-viewer` branch is a focused standalone viewer.
+This repository is derived from [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer), but the public `main` branch is a focused standalone Golden Luck viewer.
 
 | Area | Upstream viewer | This large-DWG viewer |
 | --- | --- | --- |
@@ -235,7 +239,7 @@ This repository is derived from [mlightcad/cad-viewer](https://github.com/mlight
 | Fonts | Upstream text-rendering pipeline | Deferred, drawing-specific font loading |
 | Scope | Editing, selection, extension systems | Opening, viewing, history, pan, and zoom |
 
-The `main` branch is reserved for upstream tracking. The `large-dwg-viewer` branch contains this implementation and is the default branch of the fork.
+The public `main` branch contains the Golden Luck progressive viewer and is tagged for each deployed release.
 
 ## Known limitations
 
@@ -263,7 +267,9 @@ This repository contains components under different licenses. Read [`LICENSE.md`
 
 ---
 
-# CADViewer：大型 DWG/DXF 浏览器查看器
+# CADViewer：统一 DWG/DXF/STL/STEP 浏览器查看器
+
+同一个打开按钮、拖放区域、最近文件列表和查看工具栏可以打开 DWG、DXF、STL、STEP/STP、IGES/IGS、BREP/BRP。三维格式由浏览器本机的 OpenCascade WebAssembly 三角化，并使用 WebGL 显示，文件不会上传。
 
 CADViewer 是一个开源、纯浏览器运行的 DWG 查看器，针对普通网页 CAD 查看器打开大型工程图纸缓慢、长时间白屏、主线程卡死或内存不足的问题进行优化。它使用 Web Worker 和 LibreDWG WebAssembly 在浏览器中解析 DWG/DXF，将轻量图元批次持续发送给主线程，再通过 Canvas 2D 与 `Path2D` 渐进绘制。
 
@@ -290,6 +296,8 @@ CADViewer 改用渐进流程：
 
 ## 主要特点
 
+- DWG、DXF、STL、STEP/STP、IGES/IGS、BREP/BRP 共用一个文件入口和一套工具栏。
+- 三维网格与工程实体格式在本机浏览器中完成 WebGL 显示。
 - 面向大型工程图纸的 DWG/DXF 渐进解析与显示。
 - 使用 Web Worker 和 LibreDWG WebAssembly，解析过程在浏览器内完成。
 - 使用 Canvas 2D 与 `Path2D`，不为每个图元建立完整 Three.js 场景节点。
@@ -322,7 +330,7 @@ python -m http.server 53281
 http://localhost:53281/cad-viewer/
 ```
 
-点击“打开图纸”选择本地 `.dwg` 或 `.dxf`。本地文件由浏览器内的查看器解析，不会通过本项目上传到服务器。
+点击“打开图纸/模型”选择本地 DWG、DXF、STL、STEP/STP、IGES/IGS 或 BREP/BRP 文件。本地文件由浏览器内的查看器解析，不会通过本项目上传到服务器。
 
 打开当前站点已经托管的图纸：
 
@@ -339,7 +347,7 @@ http://localhost:53281/cad-viewer/
 ```js
 window.CAD_VIEWER_CONFIG = {
   language: 'zh-CN',
-  dataBaseUrl: '../cad-data/',
+  dataBaseUrl: '../cad-data/open/',
 };
 ```
 
@@ -372,8 +380,7 @@ language: 'zh-CN'  // 简体中文
 
 公开配置的默认规则：
 
-- 本机 `localhost`、`127.0.0.1` 或 `::1`：`../cad-data/`
-- 其他公开站点：配置的公共 DATA CDN
+- 本机和公开站点默认使用仓库自带的 `../cad-data/open/` 许可证已核准字体样本。
 
 离线或内网部署时，请将 [`cad-viewer/viewer-config.local.js`](cad-viewer/viewer-config.local.js) 复制为部署目录中的 `viewer-config.js`，使 DATA 与字体请求保持在当前服务器。
 
@@ -406,7 +413,7 @@ cad-data/
 
 `fonts.json` 将 CAD 字体或样式名称映射到浏览器可以请求的文件。CADViewer 会读取图纸文字样式，只下载当前图纸需要的字体与回退字体；找不到字体时继续使用系统字体，不影响几何图元打开。
 
-仓库提供 [`cad-data/open/`](cad-data/open/README.md) 作为可公开分发的最小 DATA 示例，其中只包含许可证明确的字体和精简清单。它适合测试自托管 DATA 路由，但不是完整 CAD 字体库。
+仓库提供 [`cad-data/open/`](cad-data/open/README.md) 作为默认自托管 DATA，其中只包含许可证明确的字体和精简清单。它适合公开部署，但不是完整 CAD 字体库。
 
 不要公开发布专有或许可证不明确的 CAD 字体。每个字体文件都应单独确认再分发权限。
 
@@ -475,6 +482,7 @@ CADViewer 避免建立完整 CAD 应用通常需要的部分高成本结构，�
 
 - `index.html`
 - `viewer.js`
+- `model-viewer.js`
 - `viewer-config.js`
 - `online-open.js`
 - `parser-worker.js`
@@ -489,7 +497,7 @@ CADViewer 避免建立完整 CAD 应用通常需要的部分高成本结构，�
 
 ## 与上游项目的区别
 
-本仓库派生自 [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer)，但 `large-dwg-viewer` 分支是专注大图的独立查看器。
+本仓库派生自 [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer)，公开 `main` 分支是 Golden Luck 的独立渐进式查看器。
 
 | 项目 | 上游查看器 | 当前大型 DWG 查看器 |
 | --- | --- | --- |
@@ -500,7 +508,7 @@ CADViewer 避免建立完整 CAD 应用通常需要的部分高成本结构，�
 | 字体 | 上游文字渲染流程 | 图元完成后按图纸需要加载字体 |
 | 功能范围 | 编辑、选择和扩展体系 | 打开、查看、历史、平移和缩放 |
 
-`main` 分支用于跟踪上游；`large-dwg-viewer` 分支包含当前实现，也是 Fork 的默认分支。
+公开 `main` 分支包含 Golden Luck 当前实现，并为每次网站部署建立对应标签。
 
 ## 当前限制
 

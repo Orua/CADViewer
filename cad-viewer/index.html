@@ -1,9 +1,10 @@
 ﻿<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>工程图在线查看</title>
+    <link rel="icon" href="data:," />
+    <title>CAD &amp; 3D Drawing Viewer | GOLDENLUCK</title>
     <style>
       * {
         margin: 0;
@@ -22,12 +23,48 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
+        display: flex;
+        flex-direction: column;
       }
+
+      .goldenluck-tools-header {
+        flex: 0 0 auto;
+        min-height: 58px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: .55rem 1rem;
+        border-bottom: 1px solid #dfd4c5;
+        background: #ffffff;
+        color: #11171c;
+      }
+
+      .goldenluck-tools-brand { display: inline-flex; align-items: center; gap: .7rem; color: #11171c; text-decoration: none; }
+      .goldenluck-tools-mark { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 6px; background: #a95800; color: #fff; font-family: Georgia, serif; font-weight: 800; }
+      .goldenluck-tools-brand strong { display: block; letter-spacing: .055em; }
+      .goldenluck-tools-brand small { display: block; color: #6b6259; font-size: .68rem; letter-spacing: .12em; }
+      .goldenluck-tools-nav { display: flex; align-items: center; justify-content: flex-end; gap: .35rem; flex-wrap: wrap; }
+      .goldenluck-tools-nav a { padding: .42rem .65rem; border-radius: 5px; color: #5f3300; font-size: .8rem; font-weight: 700; text-decoration: none; }
+      .goldenluck-tools-nav a:hover { background: #fff0d9; }
+      .goldenluck-privacy { color: #56616a !important; font-weight: 600 !important; }
+      .file-sidebar { background: #f4f0e8 !important; border-color: #dfd4c5 !important; }
+      .sidebar-title { color: #7d4100 !important; }
+      .sidebar-help { color: #56616a !important; }
+      .file-list-item { border-color: #d7c9b7 !important; background: #fff !important; color: #26313a !important; }
+      .file-list-item:hover, .file-list-item.active { border-color: #ef8b00 !important; background: #fff0d9 !important; color: #5f3300 !important; }
+      .dev-toolbar { border-color: #dfd4c5 !important; background: #fff !important; }
+      .dev-toolbar button { border-color: #cfc1b0 !important; background: #f4f0e8 !important; color: #26313a !important; }
+      .dev-toolbar button:hover:not(:disabled), .dev-toolbar button.is-active { border-color: #a95800 !important; background: #fff0d9 !important; color: #5f3300 !important; }
+      .fast-viewer-status { color: #56616a !important; }
+      .open-main-button { border-color: #a95800 !important; background: #a95800 !important; }
+      .open-main-button:hover { background: #7d4100 !important; }
 
       .app-shell {
         display: flex;
         width: 100%;
-        height: 100%;
+        height: auto;
+        flex: 1 1 auto;
         max-width: 100%;
         min-height: 0;
         overflow: hidden;
@@ -54,7 +91,8 @@
         display: flex;
         flex-direction: column;
         gap: 0.8rem;
-        overflow: auto;
+        overflow-x: hidden;
+        overflow-y: auto;
       }
 
       .file-sidebar-resize-handle {
@@ -96,6 +134,8 @@
 
       .file-list-item {
         width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
         border: 1px solid #374151;
         border-radius: 8px;
         background: #1f2937;
@@ -104,6 +144,9 @@
         padding: 0.65rem 0.7rem;
         font-size: 0.88rem;
         cursor: pointer;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
         transition: background 0.2s ease, border-color 0.2s ease;
       }
 
@@ -429,15 +472,38 @@
       }
 
       #cad-container canvas {
+        position: absolute;
+        inset: 0;
         display: block;
         width: 100%;
         height: 100%;
         background: #090b0e;
         cursor: grab;
+        touch-action: none;
+      }
+
+      #cad-container canvas[hidden] {
+        display: none;
       }
 
       #cad-container canvas.dragging {
         cursor: grabbing;
+      }
+
+      .viewer-pane.is-file-dragging::after {
+        position: absolute;
+        z-index: 60;
+        inset: 18px;
+        display: grid;
+        place-items: center;
+        border: 2px dashed #60a5fa;
+        border-radius: 14px;
+        background: rgba(15, 23, 42, 0.88);
+        color: #eff6ff;
+        content: "Drop to open a drawing or 3D model";
+        font-size: 1.05rem;
+        font-weight: 600;
+        pointer-events: none;
       }
 
       #loadingInteractionHint {
@@ -545,9 +611,43 @@
       }
 
       .fast-viewer-metrics {
+        flex: 0 0 auto;
         color: #7fda9c;
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
+      }
+
+      @media (max-width: 480px) {
+        .goldenluck-tools-header { min-height: 50px; padding: .4rem .6rem; }
+        .goldenluck-tools-brand small, .goldenluck-privacy, .goldenluck-tools-nav a:first-of-type { display: none; }
+        .goldenluck-tools-brand strong { font-size: .82rem; }
+        .goldenluck-tools-mark { width: 32px; height: 32px; }
+        .goldenluck-tools-nav a { padding: .35rem; font-size: .72rem; }
+        .file-sidebar-column {
+          max-width: min(58vw, 215px);
+        }
+
+        .file-sidebar {
+          padding: 0.75rem;
+        }
+
+        .dev-toolbar {
+          flex-wrap: nowrap;
+          overflow: hidden;
+          padding: 0.35rem 0.5rem;
+        }
+
+        .dev-toolbar > .dev-toolbar-menu-wrap,
+        #fitButton,
+        .fast-viewer-status {
+          display: none;
+        }
+
+        .fast-viewer-metrics {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
       }
 
       #mlcad-loading {
@@ -631,6 +731,21 @@
     </style>
   </head>
   <body class="fast-viewer-mode">
+    <header class="goldenluck-tools-header">
+      <a class="goldenluck-tools-brand" href="https://www.goldenluck-hk.com/" aria-label="GOLDENLUCK corporate website">
+        <span class="goldenluck-tools-mark" aria-hidden="true">GL</span>
+        <span><strong>GOLDENLUCK</strong><small>METAL GROUP · ONLINE TOOLS</small></span>
+      </a>
+      <nav class="goldenluck-tools-nav" aria-label="Related links">
+        <span class="goldenluck-privacy">Files stay in your browser</span>
+        <a href="/wiki/en/tools/cad-viewer/">Tool guide</a>
+        <a href="/wiki/en/">Hardware Wiki</a>
+        <a href="https://github.com/Orua/CADViewer" target="_blank" rel="noopener">Source</a>
+        <a href="./open-source-notices.html">Licences</a>
+        <a href="https://www.goldenluck-hk.com/">Corporate site</a>
+        <span data-goldenluck-copyright style="color:#6b6259;font-size:.68rem;white-space:nowrap">© 2005–2026 GOLDENLUCK Metal Group Ltd.</span>
+      </nav>
+    </header>
     <div class="app-shell">
       <div class="file-sidebar-column" id="fileSidebarColumn">
       <aside class="file-sidebar" id="fileSidebar">
@@ -653,7 +768,7 @@
         <div class="file-sidebar-body" id="fileSidebarBody">
           <p class="sidebar-help" data-i18n="drawingListHelp">当前图纸及最近打开的图纸记录。</p>
           <div class="file-list" id="predefinedFileList">
-          <script src="./online-open.js?v=20260818-ui-language-1"></script>
+          <script src="./online-open.js?v=20260826-stp-history-fix-1"></script>
           </div>
         </div>
       </aside>
@@ -766,8 +881,11 @@
           <div class="empty-state" id="emptyState">
             <button type="button" class="open-main-button" id="centerOpenButton" data-i18n="openDrawing">打开图纸</button>
           </div>
-          <input type="file" id="fileInputElement" accept=".dxf,.dwg" />
-          <div id="cad-container"><canvas id="fastCanvas"></canvas></div>
+          <input type="file" id="fileInputElement" accept=".dwg,.dxf,.stl,.stp,.step,.igs,.iges,.brep,.brp" />
+          <div id="cad-container">
+            <canvas id="fastCanvas"></canvas>
+            <canvas id="modelCanvas" hidden></canvas>
+          </div>
           <div id="zoomWindow" aria-hidden="true"></div>
           <nav class="fast-cad-toolbar" aria-label="图纸工具">
             <button type="button" id="toolOpenButton" title="打开图纸" aria-label="打开图纸" data-i18n-title="openDrawing" data-i18n-aria-label="openDrawing">
@@ -778,6 +896,12 @@
             </button>
             <button type="button" id="toolFitButton" title="全图显示" aria-label="全图显示" data-i18n-title="fitView" data-i18n-aria-label="fitView">
               <svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><rect x="7" y="7" width="10" height="10" rx="1"/></svg>
+            </button>
+            <button type="button" id="toolZoomInButton" title="放大" aria-label="放大" data-i18n-title="zoomIn" data-i18n-aria-label="zoomIn">
+              <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4M10.5 7.5v6m-3-3h6"/></svg>
+            </button>
+            <button type="button" id="toolZoomOutButton" title="缩小" aria-label="缩小" data-i18n-title="zoomOut" data-i18n-aria-label="zoomOut">
+              <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4M7.5 10.5h6"/></svg>
             </button>
             <button type="button" id="toolZoomWindowButton" title="框选放大" aria-label="框选放大" data-i18n-title="zoomWindow" data-i18n-aria-label="zoomWindow">
               <svg viewBox="0 0 24 24"><rect x="4" y="4" width="11" height="11" rx="1"/><path d="m13 13 7 7M16 16h4v4"/></svg>
@@ -798,6 +922,7 @@
       </main>
     </div>
     <script src="./viewer-config.js?v=20260818-ui-language-1"></script>
-    <script type="module" src="./viewer.js?v=20260819-phone-sidebar-1"></script>
+    <script type="module" src="./viewer.js?v=20260826-history-path-dialog-1"></script>
+    <script src="/js/site-common.js" defer></script>
   </body>
 </html>

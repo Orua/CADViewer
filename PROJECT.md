@@ -2,6 +2,8 @@
 
 ## Overview
 
+The unified viewer routes STL to a lightweight mesh parser and routes STEP/STP, IGES/IGS, and BREP/BRP through a local OpenCascade WebAssembly worker. Both the 2D and 3D renderers share the same file entry, recent-file UI, fit, zoom-window, background, and sidebar controls.
+
 CADViewer is a browser-only, read-only DWG/DXF viewer derived from [mlightcad/cad-viewer](https://github.com/mlightcad/cad-viewer). It focuses on opening large drawings quickly with progressive rendering and reduced main-thread memory pressure.
 
 - Local files are parsed in the browser by a Web Worker and LibreDWG WebAssembly.
@@ -54,7 +56,7 @@ Deployment credentials, hostnames, internal paths, and organization-specific pro
 - WebAssembly bindings: [mlightcad/libredwg-web](https://github.com/mlightcad/libredwg-web)
 - DWG parser: [LibreDWG/libredwg](https://github.com/LibreDWG/libredwg)
 
-The `main` branch tracks the upstream project. The `large-dwg-viewer` branch contains this progressive viewer and is the default branch of the fork. Upstream changes should be reviewed and selectively integrated instead of blindly overwriting this branch.
+The public `main` branch contains this Golden Luck progressive viewer and is tagged for each deployed release. Upstream changes should be reviewed and selectively integrated instead of blindly overwriting the public implementation.
 
 ## Licensing
 

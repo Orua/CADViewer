@@ -1,5 +1,8 @@
 ﻿const canvas = document.querySelector('#fastCanvas');
+import { ModelViewer3D } from './model-viewer.js?v=20260826-stp-history-fix-1';
+
 const context = canvas.getContext('2d', { alpha: false });
+const modelCanvas = document.querySelector('#modelCanvas');
 const openButton = document.querySelector('#persistentOpenButton');
 const fitButton = document.querySelector('#fitButton');
 const fileInput = document.querySelector('#fileInputElement');
@@ -11,12 +14,15 @@ const loadingOverlay = document.querySelector('#mlcad-loading');
 const toolOpenButton = document.querySelector('#toolOpenButton');
 const toolPanButton = document.querySelector('#toolPanButton');
 const toolFitButton = document.querySelector('#toolFitButton');
+const toolZoomInButton = document.querySelector('#toolZoomInButton');
+const toolZoomOutButton = document.querySelector('#toolZoomOutButton');
 const toolZoomWindowButton = document.querySelector('#toolZoomWindowButton');
 const toolSidebarButton = document.querySelector('#toolSidebarButton');
 const toolBackgroundButton = document.querySelector('#toolBackgroundButton');
 const fileSidebarColumn = document.querySelector('#fileSidebarColumn');
 const zoomWindow = document.querySelector('#zoomWindow');
 const loadingInteractionHint = document.querySelector('#loadingInteractionHint');
+const viewerPane = document.querySelector('#viewerPane');
 const configuredDataBaseUrl = window.CAD_VIEWER_CONFIG?.dataBaseUrl;
 const phoneViewport = window.matchMedia('(max-width: 767px)');
 window.cadViewerFontState = { dataBaseUrl: configuredDataBaseUrl, phase: 'idle' };
@@ -35,28 +41,36 @@ phoneViewport.addEventListener('change', syncSidebarForViewport);
 
 const MESSAGES = {
   'zh-CN': {
-    pageTitle: '工程图在线查看', drawingList: '图纸列表', recentDrawingsHint: '点击查看最近图纸', drawingListHelp: '当前图纸及最近打开的图纸记录。',
-    openDrawing: '打开图纸', fitView: '全图', selectDrawing: '选择图纸后开始查看', parsing: '正在解析...',
-    pan: '拖动查看', zoomWindow: '框选放大', toggleDrawingList: '显示或隐藏图纸列表', toggleBackground: '切换深浅底色',
+    pageTitle: '工程图与三维模型查看', drawingList: '图纸列表', recentDrawingsHint: '点击查看最近文件', drawingListHelp: '当前图纸、模型及最近打开记录。',
+    openDrawing: '打开图纸/模型', fitView: '全图', selectDrawing: '选择图纸或模型后开始查看', parsing: '正在解析...',
+    pan: '拖动查看', zoomIn: '放大', zoomOut: '缩小', zoomWindow: '框选放大', toggleDrawingList: '显示或隐藏图纸列表', toggleBackground: '切换深浅底色',
     loadingWait: '载入中...请稍后', entityCount: '{count} 图元', combiningBlocks: '正在解析...组合图块…', showingStage: '正在解析...显示{stage}…',
     stageOutline: '轮廓直线', stageCurves: '圆弧和曲线', stageAnnotation: '尺寸和引线', stageText: '文字', stageHatch: '填充边界',
     correctingText: '正在解析...校正文字位置…', loadingFonts: '正在解析...载入图纸字体…', renderingFonts: '正在解析...使用图纸字体重绘文字…',
     completed: '全部完成：{seconds}s（解析 {parseSeconds}s）{remainder}', unsupported: '，仍有 {count} 个无法显示',
     fastPreview: '快速预览：正在移动缓存图…', refining: '正在精绘...', refineComplete: '精绘完成：{seconds}s', reading: '正在解析...读取 {name}…',
     decoding: '正在解析...解码 DWG…', initializingParser: '正在解析...初始化解析器…', loadingOutline: '正在解析...载入轮廓线…',
+    modelParsing: '正在解析...三角化 {format} 模型…', modelCompleted: '全部完成：{seconds}s', modelMetrics: '{count} 三角面 · {x} × {y} × {z} mm',
+    unsupportedFormat: '不支持的文件格式：{extension}',
     openFailed: '打开失败：{message}', workerError: 'Worker 错误：{message}', downloading: '正在解析...下载 {name}…', currentDrawing: '当前：{name}', drawingFile: '图纸文件',
+    localHistoryUnavailable: '无法重新打开“{name}”：该历史记录来自本机文件，浏览器不会保存原始路径。请从服务器图纸列表重新打开。',
+    historyPathUnavailable: '无法打开“{name}”：原图纸路径不存在、已移动，或当前没有访问权限。',
   },
   en: {
-    pageTitle: 'Engineering Drawing Viewer', drawingList: 'Drawings', recentDrawingsHint: 'View recent drawings', drawingListHelp: 'Current drawing and recently opened drawing history.',
-    openDrawing: 'Open drawing', fitView: 'Fit', selectDrawing: 'Select a drawing to begin', parsing: 'Parsing...',
-    pan: 'Pan', zoomWindow: 'Zoom window', toggleDrawingList: 'Show or hide drawing list', toggleBackground: 'Toggle light/dark background',
+    pageTitle: 'Drawing and 3D Model Viewer', drawingList: 'Drawings', recentDrawingsHint: 'View recent files', drawingListHelp: 'Current drawing or model and recently opened files.',
+    openDrawing: 'Open drawing/model', fitView: 'Fit', selectDrawing: 'Select a drawing or model to begin', parsing: 'Parsing...',
+    pan: 'Pan', zoomIn: 'Zoom in', zoomOut: 'Zoom out', zoomWindow: 'Zoom window', toggleDrawingList: 'Show or hide drawing list', toggleBackground: 'Toggle light/dark background',
     loadingWait: 'Loading... please wait', entityCount: '{count} entities', combiningBlocks: 'Parsing... assembling blocks…', showingStage: 'Parsing... showing {stage}…',
     stageOutline: 'outline lines', stageCurves: 'arcs and curves', stageAnnotation: 'dimensions and leaders', stageText: 'text', stageHatch: 'hatch boundaries',
     correctingText: 'Parsing... correcting text positions…', loadingFonts: 'Parsing... loading drawing fonts…', renderingFonts: 'Parsing... rendering text with drawing fonts…',
     completed: 'Complete: {seconds}s (parse {parseSeconds}s){remainder}', unsupported: ', {count} items could not be displayed',
     fastPreview: 'Fast preview: moving cached drawing…', refining: 'Refining...', refineComplete: 'Refinement complete: {seconds}s', reading: 'Parsing... reading {name}…',
     decoding: 'Parsing... decoding DWG…', initializingParser: 'Parsing... initializing parser…', loadingOutline: 'Parsing... loading outline lines…',
+    modelParsing: 'Parsing... tessellating {format} model…', modelCompleted: 'Complete: {seconds}s', modelMetrics: '{count} triangles · {x} × {y} × {z} mm',
+    unsupportedFormat: 'Unsupported file format: {extension}',
     openFailed: 'Open failed: {message}', workerError: 'Worker error: {message}', downloading: 'Parsing... downloading {name}…', currentDrawing: 'Current: {name}', drawingFile: 'Drawing file',
+    localHistoryUnavailable: 'Cannot reopen “{name}”: this history entry came from a local file, and the browser does not retain its original path. Reopen it from the server drawing list.',
+    historyPathUnavailable: 'Cannot open “{name}”: its source path no longer exists, was moved, or is not accessible.',
   },
 };
 
@@ -125,6 +139,8 @@ let layerColors;
 let fontEngine;
 let loadGeneration = 0;
 let drag;
+const touchPointers = new Map();
+let pinch;
 let hasOpenedFile = false;
 let interactionMode = 'pan';
 let zoomWindowStart;
@@ -141,19 +157,60 @@ let canvasInteractionsBound = false;
 let refineStartedAt = 0;
 let drawingLoadActive = false;
 let loadingHintTimer;
+let activeRenderer = 'cad';
+
+const CAD_EXTENSIONS = new Set(['dwg', 'dxf']);
+const MODEL_FORMATS = new Map([
+  ['stl', 'stl'],
+  ['stp', 'step'],
+  ['step', 'step'],
+  ['igs', 'iges'],
+  ['iges', 'iges'],
+  ['brep', 'brep'],
+  ['brp', 'brep'],
+]);
+
+const modelViewer = new ModelViewer3D(modelCanvas, {
+  background: backgroundColor,
+  zoomWindow,
+  onInteractionModeChange: (mode) => setInteractionMode(mode),
+});
+
+function activateRenderer(renderer) {
+  activeRenderer = renderer;
+  canvas.hidden = renderer !== 'cad';
+  modelViewer.setVisible(renderer === 'model');
+  if (renderer === 'model') {
+    releaseCanvasInteractions();
+  } else {
+    modelViewer.setEnabled(false);
+    resize();
+  }
+  setInteractionMode('pan');
+}
 
 function setInteractionMode(mode) {
   interactionMode = mode;
   toolPanButton.classList.toggle('is-active', mode === 'pan');
   toolZoomWindowButton.classList.toggle('is-active', mode === 'zoom-window');
-  canvas.style.cursor = canvasInteractionsBound ? (mode === 'zoom-window' ? 'crosshair' : 'grab') : (drawingLoadActive ? 'wait' : 'default');
+  if (activeRenderer === 'model') {
+    modelViewer.setInteractionMode(mode);
+  } else {
+    canvas.style.cursor = canvasInteractionsBound ? (mode === 'zoom-window' ? 'crosshair' : 'grab') : (drawingLoadActive ? 'wait' : 'default');
+  }
 }
 
 function setDrawingInteractionControls(enabled) {
   toolPanButton.disabled = !enabled;
   toolFitButton.disabled = !enabled;
+  toolZoomInButton.disabled = !enabled;
+  toolZoomOutButton.disabled = !enabled;
   toolZoomWindowButton.disabled = !enabled;
-  canvas.style.cursor = enabled ? (interactionMode === 'zoom-window' ? 'crosshair' : 'grab') : (drawingLoadActive ? 'wait' : 'default');
+  if (activeRenderer === 'model') {
+    modelViewer.setEnabled(enabled);
+  } else {
+    canvas.style.cursor = enabled ? (interactionMode === 'zoom-window' ? 'crosshair' : 'grab') : (drawingLoadActive ? 'wait' : 'default');
+  }
 }
 
 function showLoadingInteractionHint(event) {
@@ -866,6 +923,7 @@ function resize() {
   const rect = canvas.getBoundingClientRect();
   canvas.width = Math.max(1, Math.round(rect.width * ratio));
   canvas.height = Math.max(1, Math.round(rect.height * ratio));
+  modelViewer.resize();
   interactionCache = undefined;
   interactionCacheCamera = undefined;
   scheduleRender();
@@ -885,6 +943,11 @@ function robustFitBounds() {
 }
 
 function fitView() {
+  if (activeRenderer === 'model') {
+    modelViewer.fit();
+    fitButton.disabled = false;
+    return;
+  }
   if (!Number.isFinite(bounds.minX)) return;
   const target = robustFitBounds();
   const width = Math.max(target.maxX - target.minX, 1e-9);
@@ -1053,7 +1116,9 @@ function render() {
   }
 }
 
-async function openBuffer(name, buffer) {
+async function openCadBuffer(name, buffer) {
+  activateRenderer('cad');
+  modelViewer.cancelImport();
   beginDrawingLoad();
   resetViewer();
   const generation = loadGeneration;
@@ -1093,12 +1158,73 @@ async function openBuffer(name, buffer) {
   worker.postMessage({ type: 'open', buffer }, [buffer]);
 }
 
+async function openModelBuffer(name, buffer, format) {
+  beginDrawingLoad();
+  worker?.terminate();
+  worker = undefined;
+  modelViewer.cancelImport();
+  modelViewer.clear();
+  loadGeneration += 1;
+  const generation = loadGeneration;
+  activateRenderer('model');
+  openButton.disabled = true;
+  fitButton.disabled = true;
+  drawingComplete = false;
+  metrics.textContent = '';
+  setLoading(true);
+  openedAt = performance.now();
+  setStatus('reading', { name });
+
+  let information;
+  if (format === 'stl') {
+    information = modelViewer.loadStl(buffer);
+  } else {
+    setStatus('modelParsing', { format: format.toUpperCase() });
+    information = await modelViewer.importOcct(
+      buffer,
+      format,
+      './vendor/occt-import-js/occt-import-js-worker.js?v=20260826-stp-history-fix-1',
+    );
+  }
+  if (generation !== loadGeneration) return;
+
+  const formatDimension = (value) => Number(value).toFixed(value >= 100 ? 1 : 2);
+  const seconds = ((performance.now() - openedAt) / 1000).toFixed(2);
+  hasOpenedFile = true;
+  drawingComplete = true;
+  document.title = name;
+  setLoading(false);
+  setStatus('modelCompleted', { seconds });
+  metrics.textContent = t('modelMetrics', {
+    count: information.triangles.toLocaleString(),
+    x: formatDimension(information.dimensions.x),
+    y: formatDimension(information.dimensions.y),
+    z: formatDimension(information.dimensions.z),
+  });
+  finishDrawingLoad();
+  setDrawingInteractionControls(true);
+  fitButton.disabled = false;
+  openButton.disabled = false;
+}
+
+async function openDrawingBuffer(name, buffer) {
+  const extension = String(name).split('.').pop().toLowerCase();
+  if (CAD_EXTENSIONS.has(extension)) {
+    return openCadBuffer(name, buffer);
+  }
+  const modelFormat = MODEL_FORMATS.get(extension);
+  if (modelFormat) {
+    return openModelBuffer(name, buffer, modelFormat);
+  }
+  throw new Error(t('unsupportedFormat', { extension: extension || '?' }));
+}
+
 async function openFile(file) {
   try {
-    beginDrawingLoad();
     window.cadViewerDrawingList?.openLocal(file.name);
-    await openBuffer(file.name, await file.arrayBuffer());
+    await openDrawingBuffer(file.name, await file.arrayBuffer());
   } catch (error) {
+    if (error?.name === 'AbortError') return;
     setStatus('openFailed', { message: error instanceof Error ? error.message : String(error) });
     openButton.disabled = false;
     setLoading(false);
@@ -1109,14 +1235,19 @@ async function openFile(file) {
 async function openUrl(url) {
   const name = decodeURIComponent(new URL(url, window.location.href).pathname.split('/').pop() || t('drawingFile'));
   try {
-    beginDrawingLoad();
     window.cadViewerDrawingList?.openUrl(url);
     setLoading(true);
     setStatus('downloading', { name });
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    await openBuffer(name, await response.arrayBuffer());
+    if (!response.ok) {
+      const message = t('historyPathUnavailable', { name });
+      setStatus('openFailed', { message });
+      window.alert(message);
+      return;
+    }
+    await openDrawingBuffer(name, await response.arrayBuffer());
   } catch (error) {
+    if (error?.name === 'AbortError') return;
     setStatus('openFailed', { message: error instanceof Error ? error.message : String(error) });
     openButton.disabled = false;
     setLoading(false);
@@ -1137,31 +1268,118 @@ function onCanvasWheel(event) {
   if (usingFastPreview) finishWheelInteractionSoon();
 }
 
+function zoomBy(factor) {
+  if (activeRenderer === 'model') {
+    modelViewer.zoomBy(factor);
+    return;
+  }
+  if (!canvasInteractionsBound || !camera) return;
+  const centerX = canvas.clientWidth / 2;
+  const centerY = canvas.clientHeight / 2;
+  const worldX = (centerX - camera.x) / camera.scale;
+  const worldY = (camera.y - centerY) / camera.scale;
+  camera.scale = Math.max(1e-8, Math.min(1e8, camera.scale * factor));
+  camera.x = centerX - worldX * camera.scale;
+  camera.y = centerY + worldY * camera.scale;
+  scheduleRender();
+}
+
 function onCanvasPointerDown(event) {
+  if (event.pointerType === 'touch') {
+    event.preventDefault();
+    touchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    canvas.setPointerCapture(event.pointerId);
+
+    if (touchPointers.size === 1) {
+      drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, cameraX: camera.x, cameraY: camera.y };
+      beginFastInteraction();
+      canvas.classList.add('dragging');
+      return;
+    }
+
+    const [first, second] = [...touchPointers.entries()].slice(0, 2);
+    const rect = canvas.getBoundingClientRect();
+    const centerX = (first[1].x + second[1].x) / 2 - rect.left;
+    const centerY = (first[1].y + second[1].y) / 2 - rect.top;
+    pinch = {
+      pointerIds: [first[0], second[0]],
+      distance: Math.hypot(second[1].x - first[1].x, second[1].y - first[1].y),
+      scale: camera.scale,
+      worldX: (centerX - camera.x) / camera.scale,
+      worldY: (camera.y - centerY) / camera.scale,
+    };
+    drag = undefined;
+    return;
+  }
+
   if (interactionMode === 'zoom-window') {
     zoomWindowStart = { x: event.offsetX, y: event.offsetY };
     setZoomWindowBox(zoomWindowStart, zoomWindowStart);
     canvas.setPointerCapture(event.pointerId);
     return;
   }
-  drag = { x: event.clientX, y: event.clientY, cameraX: camera.x, cameraY: camera.y };
+  drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, cameraX: camera.x, cameraY: camera.y };
   beginFastInteraction();
   canvas.setPointerCapture(event.pointerId);
   canvas.classList.add('dragging');
 }
 
 function onCanvasPointerMove(event) {
+  if (event.pointerType === 'touch' && touchPointers.has(event.pointerId)) {
+    event.preventDefault();
+    touchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (pinch) {
+      const first = touchPointers.get(pinch.pointerIds[0]);
+      const second = touchPointers.get(pinch.pointerIds[1]);
+      if (!first || !second) return;
+      const rect = canvas.getBoundingClientRect();
+      const centerX = (first.x + second.x) / 2 - rect.left;
+      const centerY = (first.y + second.y) / 2 - rect.top;
+      const distance = Math.hypot(second.x - first.x, second.y - first.y);
+      const factor = pinch.distance > 0 ? distance / pinch.distance : 1;
+      camera.scale = Math.max(1e-8, Math.min(1e8, pinch.scale * factor));
+      camera.x = centerX - pinch.worldX * camera.scale;
+      camera.y = centerY + pinch.worldY * camera.scale;
+      scheduleRender();
+      return;
+    }
+  }
+
   if (zoomWindowStart) {
     setZoomWindowBox(zoomWindowStart, { x: event.offsetX, y: event.offsetY });
     return;
   }
-  if (!drag) return;
+  if (!drag || drag.pointerId !== event.pointerId) return;
   camera.x = drag.cameraX + event.clientX - drag.x;
   camera.y = drag.cameraY + event.clientY - drag.y;
   scheduleRender();
 }
 
 function onCanvasPointerUp(event) {
+  if (event.pointerType === 'touch') {
+    event.preventDefault();
+    touchPointers.delete(event.pointerId);
+    pinch = undefined;
+
+    const remaining = touchPointers.entries().next().value;
+    if (remaining) {
+      drag = {
+        pointerId: remaining[0],
+        x: remaining[1].x,
+        y: remaining[1].y,
+        cameraX: camera.x,
+        cameraY: camera.y,
+      };
+      return;
+    }
+
+    drag = undefined;
+    canvas.classList.remove('dragging');
+    finishFastInteraction();
+    return;
+  }
+
   if (zoomWindowStart) {
     zoomToWindow(zoomWindowStart, { x: event.offsetX, y: event.offsetY });
     zoomWindowStart = undefined;
@@ -1174,7 +1392,22 @@ function onCanvasPointerUp(event) {
   finishFastInteraction();
 }
 
-function onCanvasPointerCancel() {
+function onCanvasPointerCancel(event) {
+  if (event.pointerType === 'touch') {
+    touchPointers.delete(event.pointerId);
+    pinch = undefined;
+    const remaining = touchPointers.entries().next().value;
+    if (remaining) {
+      drag = {
+        pointerId: remaining[0],
+        x: remaining[1].x,
+        y: remaining[1].y,
+        cameraX: camera.x,
+        cameraY: camera.y,
+      };
+      return;
+    }
+  }
   drag = undefined;
   canvas.classList.remove('dragging');
   finishFastInteraction();
@@ -1201,6 +1434,8 @@ function releaseCanvasInteractions() {
   canvasInteractionsBound = false;
   setDrawingInteractionControls(false);
   drag = undefined;
+  touchPointers.clear();
+  pinch = undefined;
   zoomWindowStart = undefined;
   zoomWindow.style.display = 'none';
   canvas.classList.remove('dragging');
@@ -1211,6 +1446,8 @@ centerOpenButton.addEventListener('click', () => fileInput.click());
 toolOpenButton.addEventListener('click', () => fileInput.click());
 toolPanButton.addEventListener('click', () => setInteractionMode('pan'));
 toolFitButton.addEventListener('click', fitView);
+toolZoomInButton.addEventListener('click', () => zoomBy(1.25));
+toolZoomOutButton.addEventListener('click', () => zoomBy(0.8));
 toolZoomWindowButton.addEventListener('click', () => setInteractionMode('zoom-window'));
 toolSidebarButton.addEventListener('click', () => {
   setFileSidebarVisible(fileSidebarColumn.classList.contains('is-hidden'));
@@ -1218,12 +1455,36 @@ toolSidebarButton.addEventListener('click', () => {
 toolBackgroundButton.addEventListener('click', () => {
   backgroundColor = backgroundColor === '#090b0e' ? '#f8fafc' : '#090b0e';
   toolBackgroundButton.classList.toggle('is-active', backgroundColor !== '#090b0e');
-  scheduleRender();
+  if (activeRenderer === 'model') {
+    modelViewer.setBackground(backgroundColor);
+  } else {
+    scheduleRender();
+  }
 });
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];
   if (file) openFile(file);
   fileInput.value = '';
+});
+viewerPane.addEventListener('dragenter', (event) => {
+  event.preventDefault();
+  viewerPane.classList.add('is-file-dragging');
+});
+viewerPane.addEventListener('dragover', (event) => {
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  viewerPane.classList.add('is-file-dragging');
+});
+viewerPane.addEventListener('dragleave', (event) => {
+  if (!event.relatedTarget || !viewerPane.contains(event.relatedTarget)) {
+    viewerPane.classList.remove('is-file-dragging');
+  }
+});
+viewerPane.addEventListener('drop', (event) => {
+  event.preventDefault();
+  viewerPane.classList.remove('is-file-dragging');
+  const file = event.dataTransfer?.files?.[0];
+  if (file) openFile(file);
 });
 document.querySelector('#predefinedFileList').addEventListener('click', (event) => {
   const button = event.target.closest('.file-list-item');
@@ -1234,7 +1495,10 @@ document.querySelector('#predefinedFileList').addEventListener('click', (event) 
     return;
   }
   if (button.dataset.localHistory === 'true') {
-    fileInput.click();
+    const name = button.title || button.textContent || t('drawingFile');
+    const message = t('localHistoryUnavailable', { name });
+    setStatus('openFailed', { message });
+    window.alert(message);
   }
 });
 fitButton.addEventListener('click', fitView);
