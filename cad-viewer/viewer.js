@@ -1,5 +1,5 @@
 ﻿const canvas = document.querySelector('#fastCanvas');
-import { ModelViewer3D } from './model-viewer.js?v=20260910-metal-studio-1';
+import { ModelViewer3D } from './model-viewer.js?v=20260910-metal-smooth-2';
 
 const context = canvas.getContext('2d', { alpha: false });
 const modelCanvas = document.querySelector('#modelCanvas');

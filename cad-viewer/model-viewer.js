@@ -369,15 +369,20 @@ function createProgram(gl) {
     '  vec3 ambient = mix(vec3(0.78), vec3(0.96), sky);',
     '  vec3 lighting = ambient + vec3(0.40) * diffuse + vec3(0.12) * fill;',
     '  vec3 halfVector = normalize(keyLight + viewDirection);',
-    '  float highlight = pow(max(dot(normal, halfVector), 0.0), 40.0) * 0.20;',
+    // A narrow direct highlight stops metal from reading like painted plastic
+    // when the object is rotated away from the broad studio reflection.
+    '  float directHighlight = pow(max(dot(normal, halfVector), 0.0), 112.0);',
     '  vec3 reflectionDirection = reflect(-viewDirection, normal);',
     '  float reflectionHeight = reflectionDirection.y * 0.5 + 0.5;',
-    '  vec3 studioReflection = mix(vec3(0.035, 0.045, 0.065), vec3(0.80, 0.86, 0.96), smoothstep(0.18, 0.82, reflectionHeight));',
-    '  float softbox = smoothstep(0.76, 0.88, reflectionDirection.y) * 0.55 + pow(max(reflectionDirection.z, 0.0), 18.0) * 0.28;',
+    '  vec3 studioReflection = mix(vec3(0.025, 0.035, 0.060), vec3(0.92, 0.96, 1.00), smoothstep(0.14, 0.86, reflectionHeight));',
+    '  float topSoftbox = smoothstep(0.66, 0.86, reflectionDirection.y) * 0.68;',
+    '  float frontSoftbox = pow(max(reflectionDirection.z, 0.0), 26.0) * 0.44;',
+    '  float sideSoftbox = pow(max(reflectionDirection.x, 0.0), 22.0) * 0.26;',
     '  float fresnel = pow(1.0 - max(dot(normal, viewDirection), 0.0), 5.0);',
     '  vec3 diffuseShading = baseColor * lighting;',
-    '  vec3 metalShading = baseColor * (studioReflection * (0.58 + 0.42 * fresnel) + softbox + highlight * 0.90);',
-    '  vec3 shaded = mix(diffuseShading, metalShading, 0.68) + mix(vec3(0.04), baseColor, 0.55) * highlight * 0.60;',
+    '  vec3 metalShading = baseColor * studioReflection * (0.70 + 0.30 * fresnel);',
+    '  vec3 studioHighlights = vec3(1.0) * (topSoftbox + frontSoftbox + sideSoftbox + directHighlight * 1.20);',
+    '  vec3 shaded = mix(diffuseShading, metalShading + studioHighlights, 0.78);',
     '  gl_FragColor = vec4(linearToSrgb(shaded), 1.0);',
     '}',
   ].join('\n');
@@ -555,7 +560,10 @@ export class ModelViewer3D {
           linearUnit: 'millimeter',
           linearDeflectionType: 'bounding_box_ratio',
           linearDeflection: parameters.linearDeflection || 0.001,
-          angularDeflection: parameters.angularDeflection || 0.5,
+          // 0.5 radian facets round parts too visibly, especially once studio
+          // reflections make each facet apparent. 0.12 keeps curved STEP
+          // geometry smooth without changing the source solid or its colours.
+          angularDeflection: parameters.angularDeflection || 0.12,
         },
       }, [bytes.buffer]);
     });
