@@ -8,6 +8,10 @@ If you are looking for a **large DWG viewer**, **online DWG viewer**, **browser 
 
 CADViewer is a read-only viewer. It prioritizes fast opening, progressive display, lower main-thread memory pressure, and self-hosted deployment over editing and plugin features.
 
+## Live demo
+
+https://www.goldenluck-hk.com/wiki/tools/cad-viewer/
+
 [中文说明](#cadviewer大型-dwgdxf-浏览器查看器)
 
 ## Why this project exists
@@ -279,6 +283,10 @@ CADViewer 是一个开源、纯浏览器运行的 DWG 查看器，针对普通�
 如果你正在寻找“大型 DWG 查看器”“在线 DWG 查看器”“浏览器 CAD 查看器”，或者需要预览因数据量太大而无法在普通网页查看器中载入的 AutoCAD 图纸，这个仓库主要解决的就是这类问题。
 
 CADViewer 是只读查看器。它优先解决快速打开、渐进显示、降低主线程内存压力和私有化静态部署，不提供完整 CAD 编辑器的编辑与插件功能。
+
+## 在线演示
+
+https://www.goldenluck-hk.com/wiki/tools/cad-viewer/
 
 [English documentation](#cadviewer--fast-large-dwgdxf-viewer-for-the-browser)
 
