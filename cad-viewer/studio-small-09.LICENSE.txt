@@ -1,0 +1,8 @@
+﻿Studio Small 09 - Sergej Majboroda / Poly Haven
+Source: https://polyhaven.com/a/studio_small_09
+Download: https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr
+License: CC0 1.0 Universal
+https://creativecommons.org/publicdomain/zero/1.0/
+
+studio-small-09.bin contains the unmodified Radiance HDR source, renamed only
+for static-server MIME compatibility. The viewer decodes it locally in memory.

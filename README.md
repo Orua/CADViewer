@@ -34,6 +34,7 @@ This architecture is intended to make very large drawings useful sooner while ke
 - One file entry and shared toolbar for DWG, DXF, STL, STEP/STP, IGES/IGS, and BREP/BRP.
 - Local WebGL rendering for three-dimensional mesh and engineering-solid formats.
 - A right-side 3D surface-finish switch for the dominant/base component: Light Gold, Nickel, 24K Gold, Gunmetal, four satin/matte variants, Antique Brass, and Antique Silver. Antique finishes use a bundled reference texture with seamless object-space projection; other exported component colours remain unchanged.
+- Bundled studio HDR reflections with roughness-dependent filtering and locally polished antique patches. This is a real-time visual approximation, not a path-traced product photograph; it does not alter the source CAD geometry.
 - Progressive DWG/DXF parsing and rendering for large engineering drawings.
 - Browser-only processing with a Web Worker and LibreDWG WebAssembly.
 - Canvas 2D and `Path2D` rendering without a complete Three.js CAD scene.
@@ -220,6 +221,7 @@ Copy the runtime files under `cad-viewer/` to a static web server. At minimum, p
 - `viewer.js`
 - `model-viewer.js`
 - `antique-metal-reference.jpg` when Antique Brass or Antique Silver is enabled
+- `studio-small-09.bin` and `studio-small-09.LICENSE.txt` for studio HDR reflections (serve `.bin` as `application/octet-stream`; procedural reflections remain as a load-failure fallback)
 - `viewer-config.js`
 - `online-open.js`
 - `parser-worker.js`
@@ -310,6 +312,7 @@ CADViewer 改用渐进流程：
 - DWG、DXF、STL、STEP/STP、IGES/IGS、BREP/BRP 共用一个文件入口和一套工具栏。
 - 三维网格与工程实体格式在本机浏览器中完成 WebGL 显示。
 - 三维模型右侧提供主要基材的表面效果切换：浅金、镍、24K 金、枪色、4 种柔和/哑光效果、仿古黄铜及仿古银。仿古效果使用仓库内置参考纹理并以无缝物体坐标投射；STP 中其他已导出的配件颜色保持不变。
+- 内置摄影棚 HDR 环境反射，按材质粗糙度过滤倒影，并模拟仿古表面局部磨亮。它是实时视觉近似，不是路径追踪产品摄影，也不会修改原始 CAD 几何。
 - 面向大型工程图纸的 DWG/DXF 渐进解析与显示。
 - 使用 Web Worker 和 LibreDWG WebAssembly，解析过程在浏览器内完成。
 - 使用 Canvas 2D 与 `Path2D`，不为每个图元建立完整 Three.js 场景节点。
@@ -496,6 +499,7 @@ CADViewer 避免建立完整 CAD 应用通常需要的部分高成本结构，�
 - `viewer.js`
 - `model-viewer.js`
 - 启用仿古黄铜或仿古银时需要 `antique-metal-reference.jpg`
+- 摄影棚反射需要 `studio-small-09.bin` 和 `studio-small-09.LICENSE.txt`（`.bin` 应返回 `application/octet-stream`；加载失败时保留程序化反射）
 - `viewer-config.js`
 - `online-open.js`
 - `parser-worker.js`

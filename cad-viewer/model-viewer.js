@@ -1,4 +1,4 @@
-const DEFAULT_MODEL_COLOR = [0.36, 0.65, 0.93];
+﻿const DEFAULT_MODEL_COLOR = [0.36, 0.65, 0.93];
 // Creo's ordinary shaded view is a light, neutral engineering viewport.
 // Keep this independent from the 2D drawing canvas' dark-mode preference.
 const CREO_MODEL_BACKGROUND = '#eef0f4';
@@ -377,7 +377,10 @@ function geometryFromOcctResult(result, format) {
     const sourceNormals = mesh && mesh.attributes && mesh.attributes.normal && mesh.attributes.normal.array;
     const indices = mesh && mesh.index && mesh.index.array;
     if (!sourcePositions || !indices) continue;
-    const displayNormals = rebuildOcctSmoothNormals(sourcePositions, indices, sourceNormals);
+    // OCCT supplies surface normals. Re-averaging the tessellation introduces
+    // triangulation-dependent ripples in mirror reflections on smooth CAD faces.
+    const displayNormals = sourceNormals && sourceNormals.length === sourcePositions.length
+      ? sourceNormals : rebuildOcctSmoothNormals(sourcePositions, indices, sourceNormals);
 
     const defaultColor = normalizeColor(mesh.color);
     const faces = Array.isArray(mesh.brep_faces) ? mesh.brep_faces : [];
@@ -471,7 +474,12 @@ function createProgram(gl) {
     '}',
   ].join('\n');
   const fragmentSource = [
+    '#extension GL_EXT_shader_texture_lod : enable',
+    '#ifdef GL_FRAGMENT_PRECISION_HIGH',
+    'precision highp float;',
+    '#else',
     'precision mediump float;',
+    '#endif',
     'varying vec3 vNormal;',
     'varying vec3 vColor;',
     'varying float vMetalness;',
@@ -486,6 +494,8 @@ function createProgram(gl) {
     'uniform float uModelRadius;',
     'uniform sampler2D uAntiqueTexture;',
     'uniform float uAntiqueAtlasOffset;',
+    'uniform sampler2D uStudioTexture;',
+    'uniform float uStudioReady;',
     'vec3 linearToSrgb(vec3 color) {',
     '  return pow(clamp(color, 0.0, 1.0), vec3(1.0 / 2.2));',
     '}',
@@ -524,7 +534,27 @@ function createProgram(gl) {
     '  float k = (roughness + 1.0) * (roughness + 1.0) / 8.0;',
     '  return nDotDirection / max(nDotDirection * (1.0 - k) + k, 0.0001);',
     '}',
+    'vec3 studioSample(vec3 direction, float blur) {',
+    '  vec2 uv = vec2(fract(atan(direction.z, direction.x) / 6.2831853 + 0.65), acos(clamp(direction.y, -1.0, 1.0)) / 3.14159265);',
+    '#ifdef GL_EXT_shader_texture_lod',
+    '  vec3 encoded = texture2DLodEXT(uStudioTexture, uv, 2.0 + blur * 7.0).rgb;',
+    '#else',
+    '  vec3 encoded = texture2D(uStudioTexture, uv, 1.0 + blur * 4.0).rgb;',
+    '#endif',
+    '  return encoded * encoded * 32.0;',
+    '}',
     'vec3 studioEnvironment(vec3 direction) {',
+    '  if (uStudioReady > 0.5) {',
+    '    vec3 tangent = normalize(cross(direction, abs(direction.y) < 0.95 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));',
+    '    vec3 bitangent = cross(direction, tangent);',
+    '    float spread = uRoughness * uRoughness * 0.6;',
+    '    vec3 radiance = studioSample(direction, uRoughness) * 0.2;',
+    '    for (int i = 0; i < 8; i++) {',
+    '      float angle = float(i) * 0.785398;',
+    '      radiance += studioSample(normalize(direction + spread * (cos(angle) * tangent + sin(angle) * bitangent)), uRoughness) * 0.1;',
+    '    }',
+    '    return radiance;',
+    '  }',
     '  float height = direction.y * 0.5 + 0.5;',
     '  vec3 environment = mix(vec3(0.018, 0.022, 0.032), vec3(0.62, 0.68, 0.78), smoothstep(0.08, 0.92, height));',
     // Broad white cards make the long flowing reflections seen in product
@@ -569,9 +599,9 @@ function createProgram(gl) {
     '  vec3 directSpecular = distribution * geometry * fresnel / max(4.0 * nDotV * max(nDotL, 0.001), 0.001);',
     '  vec3 reflectionDirection = reflect(-viewDirection, normal);',
     '  vec3 environment = studioEnvironment(reflectionDirection);',
-    '  environment = mix(environment, vec3(0.50, 0.52, 0.55), clamp(roughness * roughness * 3.1, 0.0, 0.88));',
+    '  environment = mix(environment, vec3(0.50, 0.52, 0.55), clamp(roughness * roughness * 3.1, 0.0, 0.88) * (1.0 - uStudioReady));',
     '  vec3 edgeFresnel = fresnelSchlick(nDotV, metalF0);',
-    '  vec3 metalSurface = environment * edgeFresnel * uReflectionStrength + directSpecular * nDotL * vec3(2.8, 2.65, 2.35) * uReflectionStrength * 0.78;',
+    '  vec3 metalSurface = environment * edgeFresnel * uReflectionStrength + directSpecular * nDotL * vec3(2.8, 2.65, 2.35) * uReflectionStrength * 0.78 * (1.0 - uStudioReady);',
     '  metalSurface += metalF0 * 0.055;',
     // Antique finishes use stable object-space variation, so the aged marks
     // remain attached to the product while it rotates instead of shimmering.
@@ -608,10 +638,12 @@ function createProgram(gl) {
     '  float textureMean = mix(0.34, 0.57, step(0.25, uAntiqueAtlasOffset));',
     '  float materialVariation = clamp(pow(max(textureLuma / textureMean, 0.05), 0.62), 0.48, 1.38);',
     '  float exposedHighlight = smoothstep(0.42, 0.92, nDotL) * (1.0 - patina);',
-    '  vec3 agedMetal = metalSurface * mix(0.98, 0.82, patina);',
-    '  agedMetal *= mix(1.0, materialVariation, 0.42);',
+    '  vec3 wornReflection = studioSample(reflectionDirection, 0.12) * edgeFresnel * 1.25;',
+    '  float wear = smoothstep(0.20, 0.70, antiqueCloud * 0.6 + antiqueStreak * 0.4);',
+    '  vec3 agedMetal = mix(metalSurface, wornReflection, wear * uStudioReady) * mix(0.98, 0.62, patina);',
+    '  agedMetal *= mix(1.0, materialVariation, 0.72);',
     '  agedMetal = mix(agedMetal, uPatinaColor, clamp(patina * 0.15 + pits * 0.82, 0.0, 0.88));',
-    '  agedMetal += metalF0 * (0.055 + exposedHighlight * 0.15);',
+    '  agedMetal += metalF0 * (0.035 + exposedHighlight * 0.05);',
     '  metalSurface = mix(metalSurface, agedMetal, clamp(uAntiqueStrength, 0.0, 1.0));',
     '  float diffuse = max(dot(normal, lightDirection), 0.0);',
     '  float fill = max(dot(normal, normalize(vec3(-0.52, 0.26, 0.48))), 0.0);',
@@ -697,6 +729,63 @@ function createAntiqueTexture(gl, onReady) {
   return texture;
 }
 
+// Decode Radiance scanlines once; squared encoding keeps HDR highlights on
+// baseline WebGL devices without requiring floating-point texture extensions.
+async function loadStudioTexture(gl, texture) {
+  const response = await fetch(new URL('./studio-small-09.bin', import.meta.url));
+  if (!response.ok) throw new Error('Studio environment unavailable');
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let cursor = 0;
+  const line = () => {
+    let text = '';
+    while (cursor < bytes.length) {
+      const byte = bytes[cursor++];
+      if (byte === 10) break;
+      text += String.fromCharCode(byte);
+    }
+    return text.trim();
+  };
+  while (line() !== '' && cursor < bytes.length) {}
+  const dimensions = /^-Y (\d+) \+X (\d+)$/.exec(line());
+  if (!dimensions) throw new Error('Unsupported HDR orientation');
+  const height = Number(dimensions[1]);
+  const width = Number(dimensions[2]);
+  if (width !== 1024 || height !== 512) throw new Error('Unexpected studio texture dimensions');
+  const pixels = new Uint8Array(width * height * 4);
+  const scan = new Uint8Array(width * 4);
+  for (let y = 0; y < height; y++) {
+    if (bytes[cursor++] !== 2 || bytes[cursor++] !== 2) throw new Error('Invalid HDR scanline');
+    if ((bytes[cursor++] * 256 + bytes[cursor++]) !== width) throw new Error('Invalid HDR width');
+    for (let channel = 0; channel < 4; channel++) {
+      let x = 0;
+      while (x < width) {
+        const count = bytes[cursor++];
+        if (!count || cursor >= bytes.length) throw new Error('Truncated HDR');
+        const length = count > 128 ? count - 128 : count;
+        if (x + length > width || cursor + (count > 128 ? 1 : length) > bytes.length) throw new Error('Invalid HDR run');
+        if (count > 128) {
+          const value = bytes[cursor++];
+          for (let i = 0; i < count - 128; i++) scan[channel * width + x++] = value;
+        } else {
+          for (let i = 0; i < count; i++) scan[channel * width + x++] = bytes[cursor++];
+        }
+      }
+    }
+    for (let x = 0; x < width; x++) {
+      const scale = Math.pow(2, scan[3 * width + x] - 136);
+      for (let c = 0; c < 3; c++) pixels[(y * width + x) * 4 + c] = Math.round(255 * Math.sqrt(Math.min(scan[c * width + x] * scale / 32, 1)));
+      pixels[(y * width + x) * 4 + 3] = 255;
+    }
+  }
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+}
+
 export class ModelViewer3D {
   constructor(canvas, options = {}) {
     if (!canvas) fail('缺少三维查看画布。');
@@ -738,12 +827,18 @@ export class ModelViewer3D {
     });
     if (!this.gl) fail('当前浏览器或显卡不支持 WebGL。');
 
+    this.gl.getExtension('EXT_shader_texture_lod');
     this.program = createProgram(this.gl);
     this.positionBuffer = this.gl.createBuffer();
     this.normalBuffer = this.gl.createBuffer();
     this.colorBuffer = this.gl.createBuffer();
     this.metalnessBuffer = this.gl.createBuffer();
     this.antiqueTexture = createAntiqueTexture(this.gl, () => this.requestDraw());
+    this.studioTexture = this.gl.createTexture();
+    this.studioReady = 0;
+    this.gl.bindTexture(this.gl.TEXTURE_2D, this.studioTexture);
+    this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, 1, 1, 0, this.gl.RGBA, this.gl.UNSIGNED_BYTE, new Uint8Array([128, 128, 128, 255]));
+    loadStudioTexture(this.gl, this.studioTexture).then(() => { this.studioReady = 1; this.requestDraw(); }).catch(() => {});
     this.locations = {
       position: this.gl.getAttribLocation(this.program, 'aPosition'),
       normal: this.gl.getAttribLocation(this.program, 'aNormal'),
@@ -761,6 +856,8 @@ export class ModelViewer3D {
       modelRadius: this.gl.getUniformLocation(this.program, 'uModelRadius'),
       antiqueTexture: this.gl.getUniformLocation(this.program, 'uAntiqueTexture'),
       antiqueAtlasOffset: this.gl.getUniformLocation(this.program, 'uAntiqueAtlasOffset'),
+      studioTexture: this.gl.getUniformLocation(this.program, 'uStudioTexture'),
+      studioReady: this.gl.getUniformLocation(this.program, 'uStudioReady'),
     };
     this.bindEvents();
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -1154,6 +1251,10 @@ export class ModelViewer3D {
     gl.bindTexture(gl.TEXTURE_2D, this.antiqueTexture);
     gl.uniform1i(this.locations.antiqueTexture, 0);
     gl.uniform1f(this.locations.antiqueAtlasOffset, this.metalFinish.antiqueAtlasOffset);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.studioTexture);
+    gl.uniform1i(this.locations.studioTexture, 1);
+    gl.uniform1f(this.locations.studioReady, this.studioReady);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
     gl.enableVertexAttribArray(this.locations.position);
     gl.vertexAttribPointer(this.locations.position, 3, gl.FLOAT, false, 0, 0);
@@ -1178,5 +1279,6 @@ export class ModelViewer3D {
     this.gl.deleteBuffer(this.colorBuffer);
     this.gl.deleteBuffer(this.metalnessBuffer);
     this.gl.deleteProgram(this.program);
+    this.gl.deleteTexture(this.studioTexture);
   }
 }

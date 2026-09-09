@@ -36,6 +36,10 @@ The bundled SHX parsing code retains its license notice at `cad-viewer/vendor/sh
 
 `cad-viewer/font-engine.js` includes `@mlightcad/shx-parser`, `iconv-lite`, `buffer`, `ieee754`, and `safe-buffer`. Its generated licence banner and the separate SHX parser MIT notice must remain intact when redistributing the bundle.
 
+## Studio HDR environment
+
+`cad-viewer/studio-small-09.bin` is the unmodified Radiance HDR file `studio_small_09_1k.hdr` (renamed for static-server MIME compatibility), by Sergej Majboroda, distributed by Poly Haven under CC0 1.0. Source: https://polyhaven.com/a/studio_small_09. License: https://creativecommons.org/publicdomain/zero/1.0/. Runtime attribution accompanies the asset in `studio-small-09.LICENSE.txt`.
+
 ## Fonts
 
 The self-hosted public font sample under `cad-data/open/fonts/` contains only Basic, Tenor Sans and VT323. Their SIL Open Font License texts are retained under `cad-data/open/licenses/`; source metadata is recorded in `cad-data/open/README.md` and `cad-data/open/manifest.json`. Other locally installed CAD fonts are intentionally excluded because their redistribution rights have not been established.
