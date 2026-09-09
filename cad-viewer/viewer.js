@@ -1,5 +1,5 @@
 ﻿const canvas = document.querySelector('#fastCanvas');
-import { ModelViewer3D } from './model-viewer.js?v=20260826-stp-history-fix-1';
+import { ModelViewer3D } from './model-viewer.js?v=20260909-creo-colors-2';
 
 const context = canvas.getContext('2d', { alpha: false });
 const modelCanvas = document.querySelector('#modelCanvas');
@@ -154,6 +154,8 @@ let hasOpenedFile = false;
 let interactionMode = 'pan';
 let zoomWindowStart;
 let backgroundColor = '#090b0e';
+const CREO_MODEL_BACKGROUND = '#eef0f4';
+let modelBackgroundColor = CREO_MODEL_BACKGROUND;
 let drawingComplete = false;
 let interactionCache;
 let interactionCacheCamera;
@@ -180,7 +182,7 @@ const MODEL_FORMATS = new Map([
 ]);
 
 const modelViewer = new ModelViewer3D(modelCanvas, {
-  background: backgroundColor,
+  background: modelBackgroundColor,
   zoomWindow,
   onInteractionModeChange: (mode) => setInteractionMode(mode),
 });
@@ -189,6 +191,10 @@ function activateRenderer(renderer) {
   activeRenderer = renderer;
   canvas.hidden = renderer !== 'cad';
   modelViewer.setVisible(renderer === 'model');
+  toolBackgroundButton.classList.toggle(
+    'is-active',
+    (renderer === 'model' ? modelBackgroundColor : backgroundColor) !== '#090b0e',
+  );
   if (renderer === 'model') {
     releaseCanvasInteractions();
   } else {
@@ -1462,13 +1468,17 @@ toolSidebarButton.addEventListener('click', () => {
   setFileSidebarVisible(fileSidebarColumn.classList.contains('is-hidden'));
 });
 toolBackgroundButton.addEventListener('click', () => {
+  if (activeRenderer === 'model') {
+    modelBackgroundColor = modelBackgroundColor === '#090b0e'
+      ? CREO_MODEL_BACKGROUND
+      : '#090b0e';
+    toolBackgroundButton.classList.toggle('is-active', modelBackgroundColor !== '#090b0e');
+    modelViewer.setBackground(modelBackgroundColor);
+    return;
+  }
   backgroundColor = backgroundColor === '#090b0e' ? '#f8fafc' : '#090b0e';
   toolBackgroundButton.classList.toggle('is-active', backgroundColor !== '#090b0e');
-  if (activeRenderer === 'model') {
-    modelViewer.setBackground(backgroundColor);
-  } else {
-    scheduleRender();
-  }
+  scheduleRender();
 });
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0];

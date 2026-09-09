@@ -1,4 +1,7 @@
 const DEFAULT_MODEL_COLOR = [0.36, 0.65, 0.93];
+// Creo's ordinary shaded view is a light, neutral engineering viewport.
+// Keep this independent from the 2D drawing canvas' dark-mode preference.
+const CREO_MODEL_BACKGROUND = '#eef0f4';
 
 function fail(message) {
   throw new Error(message);
@@ -349,15 +352,26 @@ function createProgram(gl) {
     'precision mediump float;',
     'varying vec3 vNormal;',
     'varying vec3 vColor;',
+    'vec3 linearToSrgb(vec3 color) {',
+    '  return pow(clamp(color, 0.0, 1.0), vec3(1.0 / 2.2));',
+    '}',
     'void main(void) {',
     '  vec3 normal = normalize(vNormal);',
-    '  vec3 keyLight = normalize(vec3(0.45, 0.78, 0.55));',
-    '  vec3 fillLight = normalize(vec3(-0.65, 0.15, -0.35));',
+    // OCCT exposes STEP colours in its linear RGB colour space. Applying an
+    // additional sRGB-to-linear conversion here crushes midtones.
+    '  vec3 baseColor = max(vColor, vec3(0.0));',
+    '  vec3 keyLight = normalize(vec3(0.35, 0.72, 0.60));',
+    '  vec3 fillLight = normalize(vec3(-0.55, 0.28, 0.48));',
+    '  vec3 viewDirection = vec3(0.0, 0.0, 1.0);',
     '  float diffuse = max(dot(normal, keyLight), 0.0);',
     '  float fill = max(dot(normal, fillLight), 0.0);',
-    '  float hemisphere = normal.y * 0.5 + 0.5;',
-    '  float brightness = 0.24 + 0.58 * diffuse + 0.14 * fill + 0.12 * hemisphere;',
-    '  gl_FragColor = vec4(vColor * brightness, 1.0);',
+    '  float sky = normal.y * 0.5 + 0.5;',
+    '  vec3 ambient = mix(vec3(0.78), vec3(0.96), sky);',
+    '  vec3 lighting = ambient + vec3(0.40) * diffuse + vec3(0.12) * fill;',
+    '  vec3 halfVector = normalize(keyLight + viewDirection);',
+    '  float highlight = pow(max(dot(normal, halfVector), 0.0), 40.0) * 0.20;',
+    '  vec3 shaded = baseColor * lighting + vec3(highlight);',
+    '  gl_FragColor = vec4(linearToSrgb(shaded), 1.0);',
     '}',
   ].join('\n');
 
@@ -377,7 +391,7 @@ export class ModelViewer3D {
     this.canvas = canvas;
     this.options = options;
     this.zoomWindow = options.zoomWindow;
-    this.background = options.background || '#090b0e';
+    this.background = options.background || CREO_MODEL_BACKGROUND;
     this.visible = false;
     this.enabled = false;
     this.geometry = null;
