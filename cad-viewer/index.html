@@ -540,7 +540,7 @@
       .fast-cad-toolbar button {
         display: grid;
         place-items: center;
-        width: 40px;
+        width: 50px;
         height: 40px;
         padding: 0;
         border: 1px solid #4b5563;
@@ -571,6 +571,106 @@
         height: 1px;
         margin: 1px 2px;
         background: #4b5563;
+      }
+
+      .metal-finish-panel {
+        position: absolute;
+        z-index: 25;
+        top: 50%;
+        right: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        width: 34px;
+        padding: 7px;
+        border: 1px solid #4b5563;
+        border-radius: 9px;
+        background: rgba(23, 28, 35, 0.94);
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.34);
+        transform: translateY(-50%);
+      }
+
+      .metal-finish-panel[hidden] {
+        display: none;
+      }
+
+      .metal-finish-button {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 30px;
+        padding: 0;
+        border: 1px solid #4b5563;
+        border-radius: 6px;
+        background: #20262e;
+        color: #e5e7eb;
+        cursor: pointer;
+      }
+
+      .metal-finish-button::after {
+        position: absolute;
+        right: calc(100% + 10px);
+        top: 50%;
+        z-index: 2;
+        visibility: hidden;
+        opacity: 0;
+        padding: 0.35rem 0.55rem;
+        border: 1px solid #5b6470;
+        border-radius: 5px;
+        background: rgba(18, 22, 28, 0.97);
+        box-shadow: 0 5px 14px rgba(0, 0, 0, 0.3);
+        color: #f5f7fa;
+        content: attr(data-label);
+        font-size: 0.74rem;
+        font-weight: 500;
+        line-height: 1;
+        white-space: nowrap;
+        pointer-events: none;
+        transform: translateY(-50%) translateX(4px);
+        transition: opacity 120ms ease, transform 120ms ease, visibility 0s linear 120ms;
+      }
+
+      .metal-finish-button:hover::after,
+      .metal-finish-button:focus-visible::after {
+        visibility: visible;
+        opacity: 1;
+        transform: translateY(-50%) translateX(0);
+        transition-delay: 0s;
+      }
+
+      .metal-finish-button:hover,
+      .metal-finish-button.is-active {
+        border-color: #e6bb66;
+        background: #3b3021;
+        color: #fff7e6;
+      }
+
+      .metal-finish-button.is-active {
+        box-shadow: inset 3px 0 0 #f5cf7a;
+      }
+
+      .metal-finish-swatch {
+        width: 28px;
+        height: 24px;
+        border: 1px solid rgba(255, 255, 255, 0.34);
+        border-radius: 4px;
+        background: linear-gradient(115deg, var(--metal-dark) 0%, var(--metal) 28%, #fff8df 47%, var(--metal) 61%, var(--metal-dark) 100%);
+        box-shadow: inset 0 0 5px rgba(255, 255, 255, 0.55), 0 1px 3px rgba(0, 0, 0, 0.45);
+      }
+
+      .metal-finish-button.is-matt .metal-finish-swatch {
+        background: linear-gradient(115deg, var(--metal-dark) 0%, var(--metal) 44%, color-mix(in srgb, var(--metal) 76%, white) 58%, var(--metal-dark) 100%);
+        box-shadow: inset 0 0 7px rgba(255, 255, 255, 0.18);
+      }
+
+      .metal-finish-button.is-antique .metal-finish-swatch {
+        background:
+          radial-gradient(circle at 28% 34%, rgba(24, 18, 12, 0.72) 0 4%, transparent 5%),
+          radial-gradient(circle at 72% 65%, rgba(20, 17, 14, 0.62) 0 5%, transparent 6%),
+          repeating-linear-gradient(103deg, transparent 0 3px, rgba(20, 16, 12, 0.2) 4px, transparent 5px 8px),
+          linear-gradient(115deg, var(--metal-dark) 0%, var(--metal) 34%, #e6d4b8 50%, var(--metal) 67%, var(--metal-dark) 100%);
+        box-shadow: inset 0 0 6px rgba(255, 244, 220, 0.25), 0 1px 3px rgba(0, 0, 0, 0.45);
       }
 
       #zoomWindow {
@@ -632,6 +732,24 @@
           min-width: 0;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+
+        .metal-finish-panel {
+          right: 7px;
+          width: 44px;
+          max-height: calc(100% - 18px);
+          overflow-y: auto;
+          padding: 5px;
+        }
+
+        .metal-finish-button {
+          width: 32px;
+          min-height: 28px;
+        }
+
+        .metal-finish-swatch {
+          width: 26px;
+          height: 22px;
         }
       }
 
@@ -885,6 +1003,18 @@
               <svg viewBox="0 0 24 24"><path d="M14.5 4.5A7.5 7.5 0 1 0 19.5 18 7 7 0 0 1 14.5 4.5z"/></svg>
             </button>
           </nav>
+          <nav class="metal-finish-panel" id="metalFinishPanel" aria-label="电镀颜色" hidden>
+            <button type="button" class="metal-finish-button is-active" data-metal-finish="light-gold" data-label="Light Gold" aria-label="Light Gold" aria-pressed="true"><span class="metal-finish-swatch" style="--metal:#d8ad62;--metal-dark:#75501d"></span></button>
+            <button type="button" class="metal-finish-button" data-metal-finish="nickel" data-label="Nickel" aria-label="Nickel" aria-pressed="false"><span class="metal-finish-swatch" style="--metal:#c9cbd0;--metal-dark:#565b62"></span></button>
+            <button type="button" class="metal-finish-button" data-metal-finish="24k-gold" data-label="24K Gold" aria-label="24K Gold" aria-pressed="false"><span class="metal-finish-swatch" style="--metal:#f2bd22;--metal-dark:#8a5100"></span></button>
+            <button type="button" class="metal-finish-button" data-metal-finish="gunmetal" data-label="Gunmetal" aria-label="Gunmetal" aria-pressed="false"><span class="metal-finish-swatch" style="--metal:#555d63;--metal-dark:#151a1e"></span></button>
+            <button type="button" class="metal-finish-button is-matt" data-metal-finish="matt-nickel" data-label="Matt Nickel" aria-label="Matt Nickel" aria-pressed="false"><span class="metal-finish-swatch" style="--metal:#b5b8ba;--metal-dark:#62666a"></span></button>
+            <button type="button" class="metal-finish-button is-matt" data-metal-finish="matt-light-gold" data-label="Matt Light Gold" aria-label="Matt Light Gold" aria-pressed="false"><span class="metal-finish-swatch" style="--metal:#caa86d;--metal-dark:#755b32"></span></button>
+            <button type="button" class="metal-finish-button is-matt" data-metal-finish="matt-24k-gold" data-label="Matt 24K Gold" aria-label="Matt 24K Gold" aria-pressed="false"><span class="metal-finish-swatch" style="--metal:#d8a623;--metal-dark:#805a09"></span></button>
+            <button type="button" class="metal-finish-button is-matt" data-metal-finish="matt-gunmetal" data-label="Matt Gunmetal" aria-label="Matt Gunmetal" aria-pressed="false"><span class="metal-finish-swatch" style="--metal:#4a5054;--metal-dark:#202529"></span></button>
+            <button type="button" class="metal-finish-button is-antique" data-metal-finish="antique-brass" data-label="Antique Brass" aria-label="Antique Brass" aria-pressed="false"><span class="metal-finish-swatch" style="--metal:#9a7337;--metal-dark:#302414"></span></button>
+            <button type="button" class="metal-finish-button is-antique" data-metal-finish="antique-silver" data-label="Antique Silver" aria-label="Antique Silver" aria-pressed="false"><span class="metal-finish-swatch" style="--metal:#9b9690;--metal-dark:#2d2b2a"></span></button>
+          </nav>
           <div id="loadingInteractionHint" role="status" aria-live="polite"></div>
           <div id="mlcad-loading" hidden>
             <div class="goldenluck-loading-brand"><span class="goldenluck-loading-mark">GL</span><span data-i18n="parsing">正在解析...</span></div>
@@ -893,7 +1023,7 @@
       </main>
     </div>
     <script src="./viewer-config.js?v=20260818-ui-language-1"></script>
-    <script type="module" src="./viewer.js?v=20260910-metal-smooth-2"></script>
+    <script type="module" src="./viewer.js?v=20260910-antique-seamless-1"></script>
     <script src="/js/site-common.js" defer></script>
   </body>
 </html>

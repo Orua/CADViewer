@@ -12,6 +12,16 @@ CADViewer is a browser-only, read-only DWG/DXF viewer derived from [mlightcad/ca
 - Fonts are loaded after geometry and only when the drawing requires them.
 - The viewer supports local files, same-origin `?file=` URLs, recent-file history, pan, zoom, fit-to-view, zoom window, and background switching.
 
+## 3D metal surface-finish preview / 三维金属表面效果预览
+
+For supported 3D models, the right-side finish switch applies a WebGL visual treatment to the dominant exported colour group, normally the base component. It offers Light Gold, Nickel, 24K Gold, Gunmetal, four lower-gloss matte variants, Antique Brass and Antique Silver. Antique finishes use the bundled reference texture through seamless object-space triplanar projection, so the aged marks remain on the model while it rotates. Other exported component colours are preserved.
+
+对于支持的三维模型，右侧表面效果切换会向面积最大的已导出颜色组（通常是主要基材）应用 WebGL 视觉效果。可选择浅金、镍、24K 金、枪色、4 种低光泽哑光效果、仿古黄铜和仿古银。仿古效果使用仓库内置参考纹理，并以无缝物体坐标三向投射，因此模型旋转时旧化痕迹会固定在表面；其他已导出的配件颜色保持不变。
+
+This feature is for visual communication only. It does not replace an approved physical sample, a plating/PVD specification, colour tolerances, coating thickness or production acceptance criteria.
+
+此功能仅用于视觉沟通，不能替代批准实体样、电镀或 PVD 规格、颜色公差、镀层厚度或量产验收标准。
+
 ## Interaction lock and UI language / 交互锁定与界面语言
 
 While the drawing is loading, the viewer does not bind pan, wheel-zoom, or zoom-window actions. A drag or wheel attempt only shows a wait cursor and a transient “Loading... please wait” hint near the pointer; it cannot change the camera. The actions are bound after all geometry, block references, and text/font work finish. A completed fast interaction reports its refinement-render duration in the status bar.

@@ -38,6 +38,46 @@ function normalizeColor(value, fallback = DEFAULT_MODEL_COLOR) {
   return color.map((component) => clamp(component / divisor, 0, 1));
 }
 
+function colorKeyAt(colors, index) {
+  return [0, 1, 2].map((offset) => Math.round(clamp(Number(colors[index + offset]), 0, 1) * 255)).join(',');
+}
+
+function triangleAreaAt(positions, index) {
+  const ux = positions[index + 3] - positions[index];
+  const uy = positions[index + 4] - positions[index + 1];
+  const uz = positions[index + 5] - positions[index + 2];
+  const vx = positions[index + 6] - positions[index];
+  const vy = positions[index + 7] - positions[index + 1];
+  const vz = positions[index + 8] - positions[index + 2];
+  return Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) * 0.5;
+}
+
+function dominantMaterialMask(positions, colors, useInputColors) {
+  const metalness = new Float32Array(colors.length);
+  if (!useInputColors) {
+    metalness.fill(1);
+    return metalness;
+  }
+
+  const coverage = new Map();
+  for (let index = 0; index < colors.length; index += 9) {
+    const key = colorKeyAt(colors, index);
+    coverage.set(key, (coverage.get(key) || 0) + triangleAreaAt(positions, index));
+  }
+  let baseKey = null;
+  let largestCoverage = -1;
+  for (const [key, count] of coverage) {
+    if (count > largestCoverage) {
+      baseKey = key;
+      largestCoverage = count;
+    }
+  }
+  for (let index = 0; index < colors.length; index += 3) {
+    metalness[index / 3] = colorKeyAt(colors, index) === baseKey ? 1 : 0;
+  }
+  return metalness;
+}
+
 function hexToRgb(hex) {
   let text = String(hex || '#090b0e').replace('#', '');
   if (text.length === 3) {
@@ -152,11 +192,13 @@ function finalizeGeometry(rawPositions, rawNormals, rawColors, format) {
     colors[index + 1] = color[1];
     colors[index + 2] = color[2];
   }
+  const metalness = dominantMaterialMask(rawPositions, colors, useInputColors);
 
   return {
     positions,
     normals,
     colors,
+    metalness,
     triangles: positions.length / 9,
     dimensions,
     radius: Math.max(Math.hypot(dimensions.x, dimensions.y, dimensions.z) / 2, 0.001),
@@ -247,6 +289,72 @@ export function parseStl(buffer) {
   return isBinary ? parseBinaryStl(buffer, faceCount) : parseAsciiStl(buffer);
 }
 
+function rebuildOcctSmoothNormals(positions, indices, sourceNormals) {
+  if (!sourceNormals || sourceNormals.length !== positions.length || !indices || indices.length < 3) {
+    return sourceNormals;
+  }
+
+  const accumulated = new Float64Array(positions.length);
+  // Only blend triangles that already belong to the same smooth CAD region.
+  // A 34-degree crease guard keeps machined edges and part boundaries crisp.
+  const creaseCosine = Math.cos(34 * Math.PI / 180);
+
+  for (let triangle = 0; triangle + 2 < indices.length; triangle += 3) {
+    const vertexIndices = [Number(indices[triangle]), Number(indices[triangle + 1]), Number(indices[triangle + 2])];
+    const points = vertexIndices.map((vertexIndex) => {
+      const offset = vertexIndex * 3;
+      return [Number(positions[offset]), Number(positions[offset + 1]), Number(positions[offset + 2])];
+    });
+    let triangleNormal = faceNormal(points[0], points[1], points[2]);
+    const sourceDirection = vertexIndices.reduce((sum, vertexIndex) => {
+      const offset = vertexIndex * 3;
+      sum[0] += Number(sourceNormals[offset]);
+      sum[1] += Number(sourceNormals[offset + 1]);
+      sum[2] += Number(sourceNormals[offset + 2]);
+      return sum;
+    }, [0, 0, 0]);
+    if (triangleNormal[0] * sourceDirection[0] + triangleNormal[1] * sourceDirection[1] + triangleNormal[2] * sourceDirection[2] < 0) {
+      triangleNormal = triangleNormal.map((component) => -component);
+    }
+
+    for (let corner = 0; corner < 3; corner += 1) {
+      const vertexIndex = vertexIndices[corner];
+      const offset = vertexIndex * 3;
+      const sourceNormal = normalizeVector(
+        Number(sourceNormals[offset]),
+        Number(sourceNormals[offset + 1]),
+        Number(sourceNormals[offset + 2]),
+      );
+      const agreement = triangleNormal[0] * sourceNormal[0] + triangleNormal[1] * sourceNormal[1] + triangleNormal[2] * sourceNormal[2];
+      if (agreement < creaseCosine) continue;
+
+      const point = points[corner];
+      const previous = points[(corner + 2) % 3];
+      const next = points[(corner + 1) % 3];
+      const toPrevious = normalizeVector(previous[0] - point[0], previous[1] - point[1], previous[2] - point[2]);
+      const toNext = normalizeVector(next[0] - point[0], next[1] - point[1], next[2] - point[2]);
+      const cornerAngle = Math.acos(clamp(
+        toPrevious[0] * toNext[0] + toPrevious[1] * toNext[1] + toPrevious[2] * toNext[2],
+        -1,
+        1,
+      ));
+      accumulated[offset] += triangleNormal[0] * cornerAngle;
+      accumulated[offset + 1] += triangleNormal[1] * cornerAngle;
+      accumulated[offset + 2] += triangleNormal[2] * cornerAngle;
+    }
+  }
+
+  const smoothed = new Float32Array(sourceNormals.length);
+  for (let offset = 0; offset < sourceNormals.length; offset += 3) {
+    const hasContribution = Math.hypot(accumulated[offset], accumulated[offset + 1], accumulated[offset + 2]) > 1e-10;
+    const normal = hasContribution
+      ? normalizeVector(accumulated[offset], accumulated[offset + 1], accumulated[offset + 2])
+      : normalizeVector(sourceNormals[offset], sourceNormals[offset + 1], sourceNormals[offset + 2]);
+    smoothed.set(normal, offset);
+  }
+  return smoothed;
+}
+
 function geometryFromOcctResult(result, format) {
   if (!result || result.success !== true || !Array.isArray(result.meshes)) {
     fail(result && result.error ? String(result.error) : 'OpenCascade 无法解析此模型。');
@@ -269,6 +377,7 @@ function geometryFromOcctResult(result, format) {
     const sourceNormals = mesh && mesh.attributes && mesh.attributes.normal && mesh.attributes.normal.array;
     const indices = mesh && mesh.index && mesh.index.array;
     if (!sourcePositions || !indices) continue;
+    const displayNormals = rebuildOcctSmoothNormals(sourcePositions, indices, sourceNormals);
 
     const defaultColor = normalizeColor(mesh.color);
     const faces = Array.isArray(mesh.brep_faces) ? mesh.brep_faces : [];
@@ -293,15 +402,15 @@ function geometryFromOcctResult(result, format) {
         triangleVertices.push(vertex);
         positions.set(vertex, outputOffset + corner * 3);
         colors.set(color, outputOffset + corner * 3);
-        if (sourceNormals && sourceNormals.length >= sourceOffset + 3) {
+        if (displayNormals && displayNormals.length >= sourceOffset + 3) {
           normals.set([
-            Number(sourceNormals[sourceOffset]),
-            Number(sourceNormals[sourceOffset + 1]),
-            Number(sourceNormals[sourceOffset + 2]),
+            Number(displayNormals[sourceOffset]),
+            Number(displayNormals[sourceOffset + 1]),
+            Number(displayNormals[sourceOffset + 2]),
           ], outputOffset + corner * 3);
         }
       }
-      if (!sourceNormals) {
+      if (!displayNormals) {
         const normal = faceNormal(...triangleVertices);
         normals.set(normal, outputOffset);
         normals.set(normal, outputOffset + 3);
@@ -336,54 +445,180 @@ function createProgram(gl) {
     'attribute vec3 aPosition;',
     'attribute vec3 aNormal;',
     'attribute vec3 aColor;',
+    'attribute float aMetalness;',
     'uniform mat4 uProjection;',
     'uniform mat4 uView;',
     'uniform mat4 uModel;',
     'uniform mat3 uNormalMatrix;',
     'varying vec3 vNormal;',
     'varying vec3 vColor;',
+    'varying float vMetalness;',
+    'varying vec3 vViewPosition;',
+    'varying vec3 vObjectPosition;',
+    'varying vec3 vObjectNormal;',
+    'uniform vec3 uMetalColor;',
+    'uniform float uRoughness;',
+    'uniform float uReflectionStrength;',
     'void main(void) {',
     '  vNormal = normalize(uNormalMatrix * aNormal);',
     '  vColor = aColor;',
-    '  gl_Position = uProjection * uView * uModel * vec4(aPosition, 1.0);',
+    '  vMetalness = aMetalness;',
+    '  vObjectPosition = aPosition;',
+    '  vObjectNormal = aNormal;',
+    '  vec4 viewPosition = uView * uModel * vec4(aPosition, 1.0);',
+    '  vViewPosition = viewPosition.xyz;',
+    '  gl_Position = uProjection * viewPosition;',
     '}',
   ].join('\n');
   const fragmentSource = [
     'precision mediump float;',
     'varying vec3 vNormal;',
     'varying vec3 vColor;',
+    'varying float vMetalness;',
+    'varying vec3 vViewPosition;',
+    'varying vec3 vObjectPosition;',
+    'varying vec3 vObjectNormal;',
+    'uniform vec3 uMetalColor;',
+    'uniform float uRoughness;',
+    'uniform float uReflectionStrength;',
+    'uniform float uAntiqueStrength;',
+    'uniform vec3 uPatinaColor;',
+    'uniform float uModelRadius;',
+    'uniform sampler2D uAntiqueTexture;',
+    'uniform float uAntiqueAtlasOffset;',
     'vec3 linearToSrgb(vec3 color) {',
     '  return pow(clamp(color, 0.0, 1.0), vec3(1.0 / 2.2));',
     '}',
+    'vec3 acesToneMap(vec3 color) {',
+    '  return clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0.0, 1.0);',
+    '}',
+    'vec3 fresnelSchlick(float cosine, vec3 f0) {',
+    '  return f0 + (1.0 - f0) * pow(1.0 - cosine, 5.0);',
+    '}',
+    'float antiqueHash(vec3 point) {',
+    '  return fract(sin(dot(point, vec3(12.9898, 78.233, 37.719))) * 43758.5453);',
+    '}',
+    'float antiqueNoise(vec3 point) {',
+    '  vec3 cell = floor(point);',
+    '  vec3 local = fract(point);',
+    '  local = local * local * (3.0 - 2.0 * local);',
+    '  float n000 = antiqueHash(cell);',
+    '  float n100 = antiqueHash(cell + vec3(1.0, 0.0, 0.0));',
+    '  float n010 = antiqueHash(cell + vec3(0.0, 1.0, 0.0));',
+    '  float n110 = antiqueHash(cell + vec3(1.0, 1.0, 0.0));',
+    '  float n001 = antiqueHash(cell + vec3(0.0, 0.0, 1.0));',
+    '  float n101 = antiqueHash(cell + vec3(1.0, 0.0, 1.0));',
+    '  float n011 = antiqueHash(cell + vec3(0.0, 1.0, 1.0));',
+    '  float n111 = antiqueHash(cell + vec3(1.0, 1.0, 1.0));',
+    '  float bottom = mix(mix(n000, n100, local.x), mix(n010, n110, local.x), local.y);',
+    '  float top = mix(mix(n001, n101, local.x), mix(n011, n111, local.x), local.y);',
+    '  return mix(bottom, top, local.z);',
+    '}',
+    'float distributionGgx(float nDotH, float roughness) {',
+    '  float alpha = roughness * roughness;',
+    '  float alpha2 = alpha * alpha;',
+    '  float denominator = nDotH * nDotH * (alpha2 - 1.0) + 1.0;',
+    '  return alpha2 / max(3.14159265 * denominator * denominator, 0.0001);',
+    '}',
+    'float geometrySchlickGgx(float nDotDirection, float roughness) {',
+    '  float k = (roughness + 1.0) * (roughness + 1.0) / 8.0;',
+    '  return nDotDirection / max(nDotDirection * (1.0 - k) + k, 0.0001);',
+    '}',
+    'vec3 studioEnvironment(vec3 direction) {',
+    '  float height = direction.y * 0.5 + 0.5;',
+    '  vec3 environment = mix(vec3(0.018, 0.022, 0.032), vec3(0.62, 0.68, 0.78), smoothstep(0.08, 0.92, height));',
+    // Broad white cards make the long flowing reflections seen in product
+    // photography; slim black flags provide the contrasting dark streaks.
+    '  float topCard = smoothstep(0.38, 0.78, direction.y) * (1.0 - smoothstep(0.52, 0.92, abs(direction.x)));',
+    '  float leftCard = smoothstep(0.28, 0.82, -direction.x) * (1.0 - smoothstep(0.42, 0.90, abs(direction.y - 0.10)));',
+    '  float frontCard = pow(max(direction.z, 0.0), 18.0);',
+    '  float blackFlagA = (1.0 - smoothstep(0.035, 0.16, abs(direction.x + 0.34))) * smoothstep(-0.45, 0.55, direction.y);',
+    '  float blackFlagB = (1.0 - smoothstep(0.025, 0.12, abs(direction.x - 0.48))) * smoothstep(-0.20, 0.72, direction.y);',
+    '  environment += vec3(1.35, 1.30, 1.18) * topCard;',
+    '  environment += vec3(0.95, 1.00, 1.08) * leftCard;',
+    '  environment += vec3(0.80) * frontCard;',
+    '  environment *= 1.0 - 0.88 * max(blackFlagA, blackFlagB);',
+    '  return environment;',
+    '}',
+    'vec3 sampleAntiqueAtlas(vec2 coordinates) {',
+    // Mirrored repetition makes opposite texture edges meet with the same
+    // pixels, eliminating the straight seams of a non-tileable photograph.
+    '  vec2 wrapped = 1.0 - abs(fract(coordinates * 0.5) * 2.0 - 1.0);',
+    '  float gutter = 0.003;',
+    '  float atlasX = mix(uAntiqueAtlasOffset + gutter, uAntiqueAtlasOffset + 0.5 - gutter, wrapped.x);',
+    '  return texture2D(uAntiqueTexture, vec2(atlasX, mix(gutter, 1.0 - gutter, wrapped.y))).rgb;',
+    '}',
     'void main(void) {',
     '  vec3 normal = normalize(vNormal);',
-    // OCCT exposes STEP colours in its linear RGB colour space. Applying an
-    // additional sRGB-to-linear conversion here crushes midtones.
-    '  vec3 baseColor = max(vColor, vec3(0.0));',
-    '  vec3 keyLight = normalize(vec3(0.35, 0.72, 0.60));',
-    '  vec3 fillLight = normalize(vec3(-0.55, 0.28, 0.48));',
-    '  vec3 viewDirection = vec3(0.0, 0.0, 1.0);',
-    '  float diffuse = max(dot(normal, keyLight), 0.0);',
-    '  float fill = max(dot(normal, fillLight), 0.0);',
-    '  float sky = normal.y * 0.5 + 0.5;',
-    '  vec3 ambient = mix(vec3(0.78), vec3(0.96), sky);',
-    '  vec3 lighting = ambient + vec3(0.40) * diffuse + vec3(0.12) * fill;',
-    '  vec3 halfVector = normalize(keyLight + viewDirection);',
-    // A narrow direct highlight stops metal from reading like painted plastic
-    // when the object is rotated away from the broad studio reflection.
-    '  float directHighlight = pow(max(dot(normal, halfVector), 0.0), 112.0);',
+    // The largest STEP colour group is the substrate. Only it receives the
+    // gold metal finish; coloured markings retain their exported RGB.
+    '  float metalness = clamp(vMetalness, 0.0, 1.0);',
+    '  vec3 inputColor = max(vColor, vec3(0.0));',
+    '  vec3 metalF0 = uMetalColor;',
+    '  vec3 viewDirection = normalize(-vViewPosition);',
+    '  vec3 lightDirection = normalize(vec3(0.42, 0.72, 0.55));',
+    '  vec3 halfVector = normalize(viewDirection + lightDirection);',
+    '  float nDotV = max(dot(normal, viewDirection), 0.001);',
+    '  float nDotL = max(dot(normal, lightDirection), 0.0);',
+    '  float nDotH = max(dot(normal, halfVector), 0.0);',
+    '  float vDotH = max(dot(viewDirection, halfVector), 0.0);',
+    '  float roughness = clamp(uRoughness, 0.06, 0.62);',
+    '  vec3 fresnel = fresnelSchlick(vDotH, metalF0);',
+    '  float distribution = distributionGgx(nDotH, roughness);',
+    '  float geometry = geometrySchlickGgx(nDotV, roughness) * geometrySchlickGgx(max(nDotL, 0.001), roughness);',
+    '  vec3 directSpecular = distribution * geometry * fresnel / max(4.0 * nDotV * max(nDotL, 0.001), 0.001);',
     '  vec3 reflectionDirection = reflect(-viewDirection, normal);',
-    '  float reflectionHeight = reflectionDirection.y * 0.5 + 0.5;',
-    '  vec3 studioReflection = mix(vec3(0.025, 0.035, 0.060), vec3(0.92, 0.96, 1.00), smoothstep(0.14, 0.86, reflectionHeight));',
-    '  float topSoftbox = smoothstep(0.66, 0.86, reflectionDirection.y) * 0.68;',
-    '  float frontSoftbox = pow(max(reflectionDirection.z, 0.0), 26.0) * 0.44;',
-    '  float sideSoftbox = pow(max(reflectionDirection.x, 0.0), 22.0) * 0.26;',
-    '  float fresnel = pow(1.0 - max(dot(normal, viewDirection), 0.0), 5.0);',
-    '  vec3 diffuseShading = baseColor * lighting;',
-    '  vec3 metalShading = baseColor * studioReflection * (0.70 + 0.30 * fresnel);',
-    '  vec3 studioHighlights = vec3(1.0) * (topSoftbox + frontSoftbox + sideSoftbox + directHighlight * 1.20);',
-    '  vec3 shaded = mix(diffuseShading, metalShading + studioHighlights, 0.78);',
-    '  gl_FragColor = vec4(linearToSrgb(shaded), 1.0);',
+    '  vec3 environment = studioEnvironment(reflectionDirection);',
+    '  environment = mix(environment, vec3(0.50, 0.52, 0.55), clamp(roughness * roughness * 3.1, 0.0, 0.88));',
+    '  vec3 edgeFresnel = fresnelSchlick(nDotV, metalF0);',
+    '  vec3 metalSurface = environment * edgeFresnel * uReflectionStrength + directSpecular * nDotL * vec3(2.8, 2.65, 2.35) * uReflectionStrength * 0.78;',
+    '  metalSurface += metalF0 * 0.055;',
+    // Antique finishes use stable object-space variation, so the aged marks
+    // remain attached to the product while it rotates instead of shimmering.
+    '  vec3 antiquePoint = vObjectPosition / max(uModelRadius, 0.001);',
+    '  float antiqueCloud = antiqueNoise(antiquePoint * 7.5);',
+    '  float antiqueStreak = antiqueNoise(vec3(antiquePoint.x * 15.0, antiquePoint.y * 48.0, antiquePoint.z * 15.0));',
+    '  float patina = smoothstep(0.60, 0.88, antiqueCloud * 0.68 + antiqueStreak * 0.32) * 0.22;',
+    // Smooth triplanar projection applies the supplied reference without UVs.
+    // Blending all three axes avoids the hard direction boundary that appeared
+    // as a straight line of black points on rounded surfaces.
+    '  vec3 antiqueUvPoint = antiquePoint * 1.35;',
+    '  vec3 stableNormal = abs(normalize(vObjectNormal));',
+    '  vec3 textureWeights = pow(stableNormal, vec3(3.0));',
+    '  textureWeights /= max(textureWeights.x + textureWeights.y + textureWeights.z, 0.0001);',
+    '  vec2 antiqueUvX = antiqueUvPoint.yz;',
+    '  vec2 antiqueUvY = antiqueUvPoint.xz;',
+    '  vec2 antiqueUvZ = antiqueUvPoint.xy;',
+    '  vec3 textureColor =',
+    '    sampleAntiqueAtlas(antiqueUvX) * textureWeights.x +',
+    '    sampleAntiqueAtlas(antiqueUvY) * textureWeights.y +',
+    '    sampleAntiqueAtlas(antiqueUvZ) * textureWeights.z;',
+    '  float textureLuma = dot(textureColor, vec3(0.2126, 0.7152, 0.0722));',
+    '  vec2 pitOffset = vec2(0.006, 0.004);',
+    '  vec3 nearbyPositive =',
+    '    sampleAntiqueAtlas(antiqueUvX + pitOffset) * textureWeights.x +',
+    '    sampleAntiqueAtlas(antiqueUvY + pitOffset) * textureWeights.y +',
+    '    sampleAntiqueAtlas(antiqueUvZ + pitOffset) * textureWeights.z;',
+    '  vec3 nearbyNegative =',
+    '    sampleAntiqueAtlas(antiqueUvX - pitOffset) * textureWeights.x +',
+    '    sampleAntiqueAtlas(antiqueUvY - pitOffset) * textureWeights.y +',
+    '    sampleAntiqueAtlas(antiqueUvZ - pitOffset) * textureWeights.z;',
+    '  float nearbyLuma = dot((nearbyPositive + nearbyNegative) * 0.5, vec3(0.2126, 0.7152, 0.0722));',
+    '  float pits = smoothstep(0.020, 0.12, max(nearbyLuma - textureLuma, 0.0));',
+    '  float textureMean = mix(0.34, 0.57, step(0.25, uAntiqueAtlasOffset));',
+    '  float materialVariation = clamp(pow(max(textureLuma / textureMean, 0.05), 0.62), 0.48, 1.38);',
+    '  float exposedHighlight = smoothstep(0.42, 0.92, nDotL) * (1.0 - patina);',
+    '  vec3 agedMetal = metalSurface * mix(0.98, 0.82, patina);',
+    '  agedMetal *= mix(1.0, materialVariation, 0.42);',
+    '  agedMetal = mix(agedMetal, uPatinaColor, clamp(patina * 0.15 + pits * 0.82, 0.0, 0.88));',
+    '  agedMetal += metalF0 * (0.055 + exposedHighlight * 0.15);',
+    '  metalSurface = mix(metalSurface, agedMetal, clamp(uAntiqueStrength, 0.0, 1.0));',
+    '  float diffuse = max(dot(normal, lightDirection), 0.0);',
+    '  float fill = max(dot(normal, normalize(vec3(-0.52, 0.26, 0.48))), 0.0);',
+    '  float sky = normal.y * 0.5 + 0.5;',
+    '  vec3 ordinarySurface = inputColor * (mix(vec3(0.72), vec3(0.98), sky) + 0.38 * diffuse + 0.12 * fill);',
+    '  vec3 shaded = mix(ordinarySurface, metalSurface, metalness);',
+    '  gl_FragColor = vec4(linearToSrgb(acesToneMap(shaded)), 1.0);',
     '}',
   ].join('\n');
 
@@ -395,6 +630,71 @@ function createProgram(gl) {
     fail('WebGL 程序链接失败：' + gl.getProgramInfoLog(program));
   }
   return program;
+}
+
+function createAntiqueTexture(gl, onReady) {
+  const size = 256;
+  const pixels = new Uint8Array(size * size * 4);
+  pixels.fill(255);
+  let state = 0x6d2b79f5;
+  const random = () => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    return (state >>> 0) / 4294967296;
+  };
+
+  // Sparse, irregular dark oxidation points. Keep both axes short so the
+  // result reads as tiny pits instead of scratches once projected on curves.
+  for (let spot = 0; spot < 300; spot += 1) {
+    const centerX = Math.floor(random() * size);
+    const centerY = Math.floor(random() * size);
+    const radiusX = 0.45 + random() * 0.85;
+    const radiusY = 0.45 + random() * 0.85;
+    const darkness = Math.floor(8 + random() * 42);
+    const extentX = Math.ceil(radiusX + 1);
+    const extentY = Math.ceil(radiusY + 1);
+    for (let y = -extentY; y <= extentY; y += 1) {
+      for (let x = -extentX; x <= extentX; x += 1) {
+        const distance = (x * x) / (radiusX * radiusX) + (y * y) / (radiusY * radiusY);
+        const brokenEdge = 0.72 + random() * 0.48;
+        if (distance > brokenEdge) continue;
+        const pixelX = (centerX + x + size) % size;
+        const pixelY = (centerY + y + size) % size;
+        const offset = (pixelY * size + pixelX) * 4;
+        const value = Math.min(pixels[offset], darkness + Math.floor(distance * 45));
+        pixels[offset] = value;
+        pixels[offset + 1] = value;
+        pixels[offset + 2] = value;
+      }
+    }
+  }
+
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+
+  const image = new Image();
+  image.decoding = 'async';
+  image.addEventListener('load', () => {
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    if (typeof onReady === 'function') onReady();
+  }, { once: true });
+  image.src = './antique-metal-reference.jpg?v=20260910-antique-texture-3';
+  return texture;
 }
 
 export class ModelViewer3D {
@@ -418,6 +718,14 @@ export class ModelViewer3D {
     this.zoomStart = null;
     this.touchPointers = new Map();
     this.pinch = null;
+    this.metalFinish = {
+      color: [0.82, 0.58, 0.24],
+      roughness: 0.105,
+      reflectionStrength: 1.28,
+      antiqueStrength: 0,
+      patinaColor: [0.04, 0.03, 0.02],
+      antiqueAtlasOffset: 0,
+    };
     this.needsDraw = true;
     this.importWorker = null;
     this.importReject = null;
@@ -434,14 +742,25 @@ export class ModelViewer3D {
     this.positionBuffer = this.gl.createBuffer();
     this.normalBuffer = this.gl.createBuffer();
     this.colorBuffer = this.gl.createBuffer();
+    this.metalnessBuffer = this.gl.createBuffer();
+    this.antiqueTexture = createAntiqueTexture(this.gl, () => this.requestDraw());
     this.locations = {
       position: this.gl.getAttribLocation(this.program, 'aPosition'),
       normal: this.gl.getAttribLocation(this.program, 'aNormal'),
       color: this.gl.getAttribLocation(this.program, 'aColor'),
+      metalness: this.gl.getAttribLocation(this.program, 'aMetalness'),
       projection: this.gl.getUniformLocation(this.program, 'uProjection'),
       view: this.gl.getUniformLocation(this.program, 'uView'),
       model: this.gl.getUniformLocation(this.program, 'uModel'),
       normalMatrix: this.gl.getUniformLocation(this.program, 'uNormalMatrix'),
+      metalColor: this.gl.getUniformLocation(this.program, 'uMetalColor'),
+      roughness: this.gl.getUniformLocation(this.program, 'uRoughness'),
+      reflectionStrength: this.gl.getUniformLocation(this.program, 'uReflectionStrength'),
+      antiqueStrength: this.gl.getUniformLocation(this.program, 'uAntiqueStrength'),
+      patinaColor: this.gl.getUniformLocation(this.program, 'uPatinaColor'),
+      modelRadius: this.gl.getUniformLocation(this.program, 'uModelRadius'),
+      antiqueTexture: this.gl.getUniformLocation(this.program, 'uAntiqueTexture'),
+      antiqueAtlasOffset: this.gl.getUniformLocation(this.program, 'uAntiqueAtlasOffset'),
     };
     this.bindEvents();
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -492,6 +811,24 @@ export class ModelViewer3D {
     this.requestDraw();
   }
 
+  setMetalFinish(finish = {}) {
+    const color = Array.isArray(finish.color) ? finish.color.slice(0, 3).map(Number) : this.metalFinish.color;
+    const patinaColor = Array.isArray(finish.patinaColor)
+      ? finish.patinaColor.slice(0, 3).map(Number)
+      : [0.04, 0.03, 0.02];
+    this.metalFinish = {
+      color: color.length === 3 && color.every(Number.isFinite) ? color.map((value) => clamp(value, 0, 1)) : this.metalFinish.color,
+      roughness: clamp(Number(finish.roughness) || this.metalFinish.roughness, 0.06, 0.62),
+      reflectionStrength: clamp(Number(finish.reflectionStrength) || this.metalFinish.reflectionStrength, 0.25, 1.6),
+      antiqueStrength: clamp(Number(finish.antiqueStrength) || 0, 0, 1),
+      antiqueAtlasOffset: clamp(Number(finish.antiqueAtlasOffset) || 0, 0, 0.5),
+      patinaColor: patinaColor.length === 3 && patinaColor.every(Number.isFinite)
+        ? patinaColor.map((value) => clamp(value, 0, 1))
+        : [0.04, 0.03, 0.02],
+    };
+    this.requestDraw();
+  }
+
   clear() {
     this.geometry = null;
     this.cancelImport();
@@ -507,6 +844,8 @@ export class ModelViewer3D {
     gl.bufferData(gl.ARRAY_BUFFER, geometry.normals, gl.STATIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, geometry.colors, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.metalnessBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, geometry.metalness, gl.STATIC_DRAW);
     this.yaw = -Math.PI / 4;
     this.pitch = Math.PI / 7;
     this.fit();
@@ -805,6 +1144,16 @@ export class ModelViewer3D {
     gl.uniformMatrix4fv(this.locations.view, false, view);
     gl.uniformMatrix4fv(this.locations.model, false, model);
     gl.uniformMatrix3fv(this.locations.normalMatrix, false, normalMatrix);
+    gl.uniform3fv(this.locations.metalColor, this.metalFinish.color);
+    gl.uniform1f(this.locations.roughness, this.metalFinish.roughness);
+    gl.uniform1f(this.locations.reflectionStrength, this.metalFinish.reflectionStrength);
+    gl.uniform1f(this.locations.antiqueStrength, this.metalFinish.antiqueStrength);
+    gl.uniform3fv(this.locations.patinaColor, this.metalFinish.patinaColor);
+    gl.uniform1f(this.locations.modelRadius, this.geometry.radius);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.antiqueTexture);
+    gl.uniform1i(this.locations.antiqueTexture, 0);
+    gl.uniform1f(this.locations.antiqueAtlasOffset, this.metalFinish.antiqueAtlasOffset);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
     gl.enableVertexAttribArray(this.locations.position);
     gl.vertexAttribPointer(this.locations.position, 3, gl.FLOAT, false, 0, 0);
@@ -814,6 +1163,9 @@ export class ModelViewer3D {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
     gl.enableVertexAttribArray(this.locations.color);
     gl.vertexAttribPointer(this.locations.color, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.metalnessBuffer);
+    gl.enableVertexAttribArray(this.locations.metalness);
+    gl.vertexAttribPointer(this.locations.metalness, 1, gl.FLOAT, false, 0, 0);
     gl.drawArrays(gl.TRIANGLES, 0, this.geometry.positions.length / 3);
   }
 
@@ -824,6 +1176,7 @@ export class ModelViewer3D {
     this.gl.deleteBuffer(this.positionBuffer);
     this.gl.deleteBuffer(this.normalBuffer);
     this.gl.deleteBuffer(this.colorBuffer);
+    this.gl.deleteBuffer(this.metalnessBuffer);
     this.gl.deleteProgram(this.program);
   }
 }

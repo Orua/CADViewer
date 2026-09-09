@@ -29,6 +29,7 @@ This architecture is intended to make very large drawings useful sooner while ke
 
 - One file entry and shared toolbar for DWG, DXF, STL, STEP/STP, IGES/IGS, and BREP/BRP.
 - Local WebGL rendering for three-dimensional mesh and engineering-solid formats.
+- A right-side 3D surface-finish switch for the dominant/base component: Light Gold, Nickel, 24K Gold, Gunmetal, four satin/matte variants, Antique Brass, and Antique Silver. Antique finishes use a bundled reference texture with seamless object-space projection; other exported component colours remain unchanged.
 - Progressive DWG/DXF parsing and rendering for large engineering drawings.
 - Browser-only processing with a Web Worker and LibreDWG WebAssembly.
 - Canvas 2D and `Path2D` rendering without a complete Three.js CAD scene.
@@ -214,6 +215,7 @@ Copy the runtime files under `cad-viewer/` to a static web server. At minimum, p
 - `index.html`
 - `viewer.js`
 - `model-viewer.js`
+- `antique-metal-reference.jpg` when Antique Brass or Antique Silver is enabled
 - `viewer-config.js`
 - `online-open.js`
 - `parser-worker.js`
@@ -248,6 +250,7 @@ The public `main` branch contains the Golden Luck progressive viewer and is tagg
 - Missing CAD fonts fall back to system fonts, so text width and appearance may differ from desktop CAD software.
 - Complex hatches, deeply nested blocks, or malformed drawings may still consume substantial time or memory.
 - The viewer does not replace a desktop CAD application when exact plotting, editing, or full object fidelity is required.
+- Surface-finish choices are browser-side visual simulations for communication and early review. They do not define plating chemistry, coating thickness, physical roughness, approved colour, or production acceptance; use an approved physical sample and specification for those decisions.
 
 ## Privacy and security
 
@@ -298,6 +301,7 @@ CADViewer 改用渐进流程：
 
 - DWG、DXF、STL、STEP/STP、IGES/IGS、BREP/BRP 共用一个文件入口和一套工具栏。
 - 三维网格与工程实体格式在本机浏览器中完成 WebGL 显示。
+- 三维模型右侧提供主要基材的表面效果切换：浅金、镍、24K 金、枪色、4 种柔和/哑光效果、仿古黄铜及仿古银。仿古效果使用仓库内置参考纹理并以无缝物体坐标投射；STP 中其他已导出的配件颜色保持不变。
 - 面向大型工程图纸的 DWG/DXF 渐进解析与显示。
 - 使用 Web Worker 和 LibreDWG WebAssembly，解析过程在浏览器内完成。
 - 使用 Canvas 2D 与 `Path2D`，不为每个图元建立完整 Three.js 场景节点。
@@ -483,6 +487,7 @@ CADViewer 避免建立完整 CAD 应用通常需要的部分高成本结构，�
 - `index.html`
 - `viewer.js`
 - `model-viewer.js`
+- 启用仿古黄铜或仿古银时需要 `antique-metal-reference.jpg`
 - `viewer-config.js`
 - `online-open.js`
 - `parser-worker.js`
@@ -517,6 +522,7 @@ CADViewer 避免建立完整 CAD 应用通常需要的部分高成本结构，�
 - 缺少 CAD 字体时会退回系统字体，文字宽度与外观可能不同于桌面 CAD 软件。
 - 复杂填充、深层嵌套块或损坏图纸仍可能占用大量时间和内存。
 - 需要精确打印、编辑或完整对象一致性时，不能替代桌面 CAD 软件。
+- 表面效果选项仅为浏览器端视觉模拟，用于沟通与前期评审；它不代表电镀化学体系、镀层厚度、实体粗糙度、批准颜色或量产验收标准。相关决定仍应以批准实体样和规格为准。
 
 ## 隐私与安全
 

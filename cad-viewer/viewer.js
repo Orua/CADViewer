@@ -1,5 +1,5 @@
 ﻿const canvas = document.querySelector('#fastCanvas');
-import { ModelViewer3D } from './model-viewer.js?v=20260910-metal-smooth-2';
+import { ModelViewer3D } from './model-viewer.js?v=20260910-antique-seamless-1';
 
 const context = canvas.getContext('2d', { alpha: false });
 const modelCanvas = document.querySelector('#modelCanvas');
@@ -23,6 +23,8 @@ const fileSidebarColumn = document.querySelector('#fileSidebarColumn');
 const zoomWindow = document.querySelector('#zoomWindow');
 const loadingInteractionHint = document.querySelector('#loadingInteractionHint');
 const viewerPane = document.querySelector('#viewerPane');
+const metalFinishPanel = document.querySelector('#metalFinishPanel');
+const metalFinishButtons = [...document.querySelectorAll('[data-metal-finish]')];
 
 const requestedOpenMode = new URLSearchParams(window.location.search).get('open');
 if (requestedOpenMode === 'cad') {
@@ -181,16 +183,59 @@ const MODEL_FORMATS = new Map([
   ['brp', 'brep'],
 ]);
 
+const METAL_FINISHES = Object.freeze({
+  'light-gold': { color: [0.82, 0.58, 0.24], roughness: 0.105, reflectionStrength: 1.28 },
+  nickel: { color: [0.72, 0.74, 0.76], roughness: 0.12, reflectionStrength: 1.22 },
+  '24k-gold': { color: [1.0, 0.64, 0.08], roughness: 0.08, reflectionStrength: 1.35 },
+  gunmetal: { color: [0.18, 0.21, 0.24], roughness: 0.15, reflectionStrength: 1.18 },
+  'matt-nickel': { color: [0.62, 0.64, 0.66], roughness: 0.40, reflectionStrength: 0.58 },
+  'matt-light-gold': { color: [0.70, 0.48, 0.21], roughness: 0.39, reflectionStrength: 0.60 },
+  'matt-24k-gold': { color: [0.90, 0.55, 0.12], roughness: 0.37, reflectionStrength: 0.62 },
+  'matt-gunmetal': { color: [0.15, 0.17, 0.19], roughness: 0.43, reflectionStrength: 0.53 },
+  'antique-brass': {
+    color: [0.46, 0.29, 0.075],
+    roughness: 0.50,
+    reflectionStrength: 0.42,
+    antiqueStrength: 0.97,
+    patinaColor: [0.055, 0.035, 0.015],
+    antiqueAtlasOffset: 0,
+  },
+  'antique-silver': {
+    color: [0.47, 0.44, 0.40],
+    roughness: 0.52,
+    reflectionStrength: 0.38,
+    antiqueStrength: 0.98,
+    patinaColor: [0.035, 0.030, 0.028],
+    antiqueAtlasOffset: 0.5,
+  },
+});
+
 const modelViewer = new ModelViewer3D(modelCanvas, {
   background: modelBackgroundColor,
   zoomWindow,
   onInteractionModeChange: (mode) => setInteractionMode(mode),
 });
 
+function selectMetalFinish(name) {
+  const finish = METAL_FINISHES[name] || METAL_FINISHES['light-gold'];
+  modelViewer.setMetalFinish(finish);
+  for (const button of metalFinishButtons) {
+    const selected = button.dataset.metalFinish === name;
+    button.classList.toggle('is-active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  }
+}
+
+for (const button of metalFinishButtons) {
+  button.addEventListener('click', () => selectMetalFinish(button.dataset.metalFinish));
+}
+selectMetalFinish('light-gold');
+
 function activateRenderer(renderer) {
   activeRenderer = renderer;
   canvas.hidden = renderer !== 'cad';
   modelViewer.setVisible(renderer === 'model');
+  metalFinishPanel.hidden = renderer !== 'model';
   toolBackgroundButton.classList.toggle(
     'is-active',
     (renderer === 'model' ? modelBackgroundColor : backgroundColor) !== '#090b0e',
