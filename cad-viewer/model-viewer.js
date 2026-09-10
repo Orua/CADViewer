@@ -516,6 +516,8 @@ function createProgram(gl) {
     'uniform float uModelRadius;',
     'uniform sampler2D uAntiqueTexture;',
     'uniform float uAntiqueAtlasOffset;',
+    'uniform float uAntiqueTextureScale;',
+    'uniform float uAntiquePitStrength;',
     'uniform sampler2D uStudioTexture;',
     'uniform float uStudioReady;',
     'vec3 linearToSrgb(vec3 color) {',
@@ -633,7 +635,7 @@ function createProgram(gl) {
     // Smooth triplanar projection applies the supplied reference without UVs.
     // Blending all three axes avoids the hard direction boundary that appeared
     // as a straight line of black points on rounded surfaces.
-    '  vec3 antiqueUvPoint = antiquePoint * 1.35;',
+    '  vec3 antiqueUvPoint = antiquePoint * uAntiqueTextureScale;',
     '  vec3 stableNormal = abs(normalize(vObjectNormal));',
     '  vec3 textureWeights = pow(stableNormal, vec3(3.0));',
     '  textureWeights /= max(textureWeights.x + textureWeights.y + textureWeights.z, 0.0001);',
@@ -663,7 +665,7 @@ function createProgram(gl) {
     '  float wear = smoothstep(0.20, 0.70, antiqueCloud * 0.6 + antiqueStreak * 0.4);',
     '  vec3 agedMetal = mix(metalSurface, wornReflection, wear * uStudioReady * 0.25) * mix(0.98, 0.62, patina);',
     '  agedMetal *= mix(1.0, materialVariation, 0.72);',
-    '  agedMetal = mix(agedMetal, uPatinaColor, clamp(patina * 0.15 + pits * 0.82, 0.0, 0.88));',
+    '  agedMetal = mix(agedMetal, uPatinaColor, clamp(patina * 0.15 + pits * uAntiquePitStrength, 0.0, 0.88));',
     '  agedMetal += metalF0 * (0.035 + exposedHighlight * 0.05);',
     '  metalSurface = mix(metalSurface, agedMetal, clamp(uAntiqueStrength, 0.0, 1.0));',
     // Broad satin scattering: soften reflected images without painting white
@@ -883,6 +885,8 @@ export class ModelViewer3D {
       antiqueStrength: 0,
       patinaColor: [0.04, 0.03, 0.02],
       antiqueAtlasOffset: 0,
+      antiqueTextureScale: 1.35,
+      antiquePitStrength: 0.82,
     };
     this.needsDraw = true;
     this.importWorker = null;
@@ -924,6 +928,8 @@ export class ModelViewer3D {
       modelRadius: this.gl.getUniformLocation(this.program, 'uModelRadius'),
       antiqueTexture: this.gl.getUniformLocation(this.program, 'uAntiqueTexture'),
       antiqueAtlasOffset: this.gl.getUniformLocation(this.program, 'uAntiqueAtlasOffset'),
+      antiqueTextureScale: this.gl.getUniformLocation(this.program, 'uAntiqueTextureScale'),
+      antiquePitStrength: this.gl.getUniformLocation(this.program, 'uAntiquePitStrength'),
       studioTexture: this.gl.getUniformLocation(this.program, 'uStudioTexture'),
       studioReady: this.gl.getUniformLocation(this.program, 'uStudioReady'),
     };
@@ -987,6 +993,8 @@ export class ModelViewer3D {
       reflectionStrength: clamp(Number(finish.reflectionStrength) || this.metalFinish.reflectionStrength, 0.25, 1.6),
       antiqueStrength: clamp(Number(finish.antiqueStrength) || 0, 0, 1),
       antiqueAtlasOffset: clamp(Number(finish.antiqueAtlasOffset) || 0, 0, 0.5),
+      antiqueTextureScale: clamp(Number(finish.antiqueTextureScale) || 1.35, 0.5, 6),
+      antiquePitStrength: clamp(Number(finish.antiquePitStrength) || 0.82, 0, 1),
       patinaColor: patinaColor.length === 3 && patinaColor.every(Number.isFinite)
         ? patinaColor.map((value) => clamp(value, 0, 1))
         : [0.04, 0.03, 0.02],
@@ -1318,6 +1326,8 @@ export class ModelViewer3D {
     gl.bindTexture(gl.TEXTURE_2D, this.antiqueTexture);
     gl.uniform1i(this.locations.antiqueTexture, 0);
     gl.uniform1f(this.locations.antiqueAtlasOffset, this.metalFinish.antiqueAtlasOffset);
+    gl.uniform1f(this.locations.antiqueTextureScale, this.metalFinish.antiqueTextureScale);
+    gl.uniform1f(this.locations.antiquePitStrength, this.metalFinish.antiquePitStrength);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.studioTexture);
     gl.uniform1i(this.locations.studioTexture, 1);

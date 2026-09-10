@@ -201,12 +201,14 @@ const METAL_FINISHES = Object.freeze({
     antiqueAtlasOffset: 0,
   },
   'antique-silver': {
-    color: [0.47, 0.44, 0.40],
-    roughness: 0.62,
-    reflectionStrength: 0.34,
-    antiqueStrength: 0.98,
+    color: [0.88, 0.86, 0.83],
+    roughness: 0.46,
+    reflectionStrength: 0.72,
+    antiqueStrength: 0.55,
     patinaColor: [0.035, 0.030, 0.028],
     antiqueAtlasOffset: 0.5,
+    antiqueTextureScale: 3.5,
+    antiquePitStrength: 0.48,
   },
 });
 
