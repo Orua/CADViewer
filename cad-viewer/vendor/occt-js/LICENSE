@@ -1,0 +1,15 @@
+GNU LESSER GENERAL PUBLIC LICENSE
+Version 2.1, February 1999
+
+This software links against Open CASCADE Technology (OCCT),
+which is licensed under the GNU Lesser General Public License v2.1
+with additional exception.
+
+See: https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+See: https://dev.opencascade.org/resources/licenses
+
+OCCT version: 7.9.3
+OCCT source: https://github.com/Open-Cascade-SAS/OCCT (tag V7_9_3)
+
+The bridge code (src/*.cpp, src/*.hpp) is also licensed under LGPL-2.1
+to maintain license compatibility.

@@ -2,7 +2,7 @@
 
 The viewer distribution includes and directly integrates GPL-3.0-or-later LibreDWG components. Accordingly, the combined viewer distribution is offered under GPL-3.0-or-later. Source files that originated under the MIT License remain available under their original MIT terms when used independently, and all third-party notices remain in force.
 
-The bundled occt-import-js and Open CASCADE WebAssembly components are provided under LGPL-2.1. Open CASCADE also includes its published LGPL exception. The retained licence texts and exception are under `cad-viewer/vendor/occt-import-js/`.
+The active bundled `@tx-code/occt-js` and Open CASCADE 7.9.3 WebAssembly components are provided under LGPL-2.1; the package notice and source links are under `cad-viewer/vendor/occt-js/`. The legacy occt-import-js runtime and its retained Open CASCADE licence texts and exception remain under `cad-viewer/vendor/occt-import-js/`.
 
 This repository contains components under different open-source licenses:
 

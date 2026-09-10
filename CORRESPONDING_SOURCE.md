@@ -29,13 +29,22 @@ See `corresponding-source/libredwg-web-20260805/README.md`. Its `build-wasm.ps1`
 
 ## Other native component
 
-The 3D importer is `occt-import-js` `0.0.23` at commit `c2148e54b456b571238d35cac037d304053d64b2`, incorporating Open CASCADE Technology at commit `d2abb6d844231cb8f29be6894440874a4700e4a5`. Its published source is available from the upstream repository and its retained licence and exception notices are under `cad-viewer/vendor/occt-import-js/`.
+The active 3D importer is [`@tx-code/occt-js`](https://github.com/tx-code/occt-js) `0.1.7` at commit `bdb80fca8ece2e32dc9444fdd41607decb393d92`, incorporating Open CASCADE Technology tag [`V7_9_3`](https://github.com/Open-Cascade-SAS/OCCT/tree/V7_9_3). The npm package notice is retained under `cad-viewer/vendor/occt-js/`.
+
+| Active 3D importer artifact | SHA-256 |
+| --- | --- |
+| `occt-js.js` | `AF62CB2F7C056BAAF5DDC52E4748BC60A13B342E7F5B1D483C18EDF5827605CA` |
+| `occt-js.wasm` | `F5F8CC1D04325D0698674AC291CFA35C14668512792EBB29CB9B353B749F77CC` |
+| `occt-js-worker.js` | `F4AB56A93992ADE13BD32053BEBBAEEBB017C936BBDFCB35C9B07B4A98454884` |
+| `LICENSE` | `8658FABE99BBC27B3A2BC44C4153925041C2805F75532E2375CF4653ECB0E754` |
+
+The legacy importer is `occt-import-js` `0.0.23` at commit `c2148e54b456b571238d35cac037d304053d64b2`, incorporating Open CASCADE Technology at commit `d2abb6d844231cb8f29be6894440874a4700e4a5`. It remains in the source distribution for compatibility and provenance; its retained licence and exception notices are under `cad-viewer/vendor/occt-import-js/`.
 
 | Distributed file | SHA-256 |
 | --- | --- |
-| `occt-import-js.js` | `3FB44CE11D00611F9B3F3C5775D520EBAB48930C1F08279B7B1316F05F0D3379` |
-| `occt-import-js.wasm` | `33391FC9D94EA5C869A6718488BF0A9A464222BAC9BDC764DFE1690CEF281952` |
-| `occt-import-js-worker.js` | `82A522FF94E1476E073B070B46B0AF6EE0BCBF99723328CF867FB69C4B95D5CF` |
+| Legacy `occt-import-js.js` | `3FB44CE11D00611F9B3F3C5775D520EBAB48930C1F08279B7B1316F05F0D3379` |
+| Legacy `occt-import-js.wasm` | `33391FC9D94EA5C869A6718488BF0A9A464222BAC9BDC764DFE1690CEF281952` |
+| Legacy `occt-import-js-worker.js` | `82A522FF94E1476E073B070B46B0AF6EE0BCBF99723328CF867FB69C4B95D5CF` |
 | `font-engine.js` | `52A19A5BB5AE4B3CC833DB911FB331617E25082000AE320B447A03E49A384A98` |
 
 This document is an engineering record of the distributed source and notices; it is not legal advice.

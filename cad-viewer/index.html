@@ -45,6 +45,8 @@
       .file-list-item:hover, .file-list-item.active { border-color: #ef8b00 !important; background: #fff0d9 !important; color: #5f3300 !important; }
       .dev-toolbar { border-color: #dfd4c5 !important; background: #fff !important; }
       .dev-toolbar button { border-color: #cfc1b0 !important; background: #f4f0e8 !important; color: #26313a !important; }
+      .model-quality-control { color: #56616a !important; }
+      .model-quality-control select { border-color: #cfc1b0 !important; background: #f4f0e8 !important; color: #26313a !important; }
       .dev-toolbar button:hover:not(:disabled), .dev-toolbar button.is-active { border-color: #a95800 !important; background: #fff0d9 !important; color: #5f3300 !important; }
       .fast-viewer-status { color: #56616a !important; }
       .open-main-button { border-color: #a95800 !important; background: #a95800 !important; }
@@ -205,6 +207,30 @@
       .dev-toolbar button:disabled {
         opacity: 0.55;
         cursor: not-allowed;
+      }
+
+      .model-quality-control {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        color: #cbd5e1;
+        font-size: 0.78rem;
+        white-space: nowrap;
+      }
+
+      .model-quality-control[hidden] {
+        display: none;
+      }
+
+      .model-quality-control select {
+        min-width: 5.5rem;
+        border: 1px solid #4b5563;
+        border-radius: 6px;
+        background: #111827;
+        color: #e5e7eb;
+        font: inherit;
+        padding: 0.34rem 1.55rem 0.34rem 0.5rem;
+        cursor: pointer;
       }
 
       .goldenluck-hidden-control {
@@ -729,9 +755,7 @@
         }
 
         .fast-viewer-metrics {
-          min-width: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
+          display: none;
         }
 
         .metal-finish-panel {
@@ -875,6 +899,13 @@
         <div class="dev-toolbar is-disabled" id="devToolbar" role="toolbar" aria-label="查看器控制">
           <button type="button" id="persistentOpenButton" class="dev-toolbar-primary" data-i18n="openDrawing">打开图纸</button>
           <button type="button" id="fitButton" disabled data-i18n="fitView">全图</button>
+          <label class="model-quality-control" id="modelQualityControl" for="modelQualitySelect" hidden>
+            <span data-i18n="modelQualityLabel">渲染</span>
+            <select id="modelQualitySelect" data-i18n-aria-label="modelQualityLabel">
+              <option value="fast" data-i18n="modelQualityFast">快速</option>
+              <option value="quality" data-i18n="modelQualityHigh">精细</option>
+            </select>
+          </label>
           <span class="fast-viewer-status" id="status" data-i18n="selectDrawing">选择图纸后开始查看</span>
           <span class="fast-viewer-metrics" id="metrics"></span>
           <!-- Required by the viewer runtime; hidden because drawing creation and docking are not exposed here. -->
@@ -1023,7 +1054,7 @@
       </main>
     </div>
     <script src="./viewer-config.js?v=20260818-ui-language-1"></script>
-    <script type="module" src="./viewer.js?v=20260910-24k-premium-1"></script>
+    <script type="module" src="./viewer.js?v=20260910-render-mode-selector-1"></script>
     <script src="/js/site-common.js" defer></script>
   </body>
 </html>

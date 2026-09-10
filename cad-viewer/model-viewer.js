@@ -401,7 +401,8 @@ function geometryFromOcctResult(result, format) {
     // OCCT supplies surface normals. Re-averaging the tessellation introduces
     // triangulation-dependent ripples in mirror reflections on smooth CAD faces.
     const displayNormals = sourceNormals && sourceNormals.length === sourcePositions.length
-      ? repairExtrusionNormals(mesh) : rebuildOcctSmoothNormals(sourcePositions, indices, sourceNormals);
+      ? (mesh.preserveSourceNormals ? sourceNormals : repairExtrusionNormals(mesh))
+      : rebuildOcctSmoothNormals(sourcePositions, indices, sourceNormals);
 
     // Missing imported appearance is not an actual cyan finish. Give unassigned
     // CAD surfaces a neutral metal candidate; explicit face colours still win.

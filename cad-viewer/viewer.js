@@ -8,6 +8,8 @@ const fitButton = document.querySelector('#fitButton');
 const fileInput = document.querySelector('#fileInputElement');
 const status = document.querySelector('#status');
 const metrics = document.querySelector('#metrics');
+const modelQualityControl = document.querySelector('#modelQualityControl');
+const modelQualitySelect = document.querySelector('#modelQualitySelect');
 const centerOpenButton = document.querySelector('#centerOpenButton');
 const emptyState = document.querySelector('#emptyState');
 const loadingOverlay = document.querySelector('#mlcad-loading');
@@ -54,6 +56,7 @@ const MESSAGES = {
   'zh-CN': {
     pageTitle: '工程图与三维模型查看', drawingList: '图纸列表', recentDrawingsHint: '点击查看最近文件', drawingListHelp: '当前图纸、模型及最近打开记录。',
     openDrawing: '打开图纸/模型', fitView: '全图', selectDrawing: '选择图纸或模型后开始查看', parsing: '正在解析...',
+    modelQualityLabel: '渲染', modelQualityFast: '快速', modelQualityHigh: '精细',
     pan: '拖动查看', zoomIn: '放大', zoomOut: '缩小', zoomWindow: '框选放大', toggleDrawingList: '显示或隐藏图纸列表', toggleBackground: '切换深浅底色',
     loadingWait: '载入中...请稍后', entityCount: '{count} 图元', combiningBlocks: '正在解析...组合图块…', showingStage: '正在解析...显示{stage}…',
     stageOutline: '轮廓直线', stageCurves: '圆弧和曲线', stageAnnotation: '尺寸和引线', stageText: '文字', stageHatch: '填充边界',
@@ -70,6 +73,7 @@ const MESSAGES = {
   en: {
     pageTitle: 'Drawing and 3D Model Viewer', drawingList: 'Drawings', recentDrawingsHint: 'View recent files', drawingListHelp: 'Current drawing or model and recently opened files.',
     openDrawing: 'Open drawing/model', fitView: 'Fit', selectDrawing: 'Select a drawing or model to begin', parsing: 'Parsing...',
+    modelQualityLabel: 'Rendering', modelQualityFast: 'Fast', modelQualityHigh: 'High quality',
     pan: 'Pan', zoomIn: 'Zoom in', zoomOut: 'Zoom out', zoomWindow: 'Zoom window', toggleDrawingList: 'Show or hide drawing list', toggleBackground: 'Toggle light/dark background',
     loadingWait: 'Loading... please wait', entityCount: '{count} entities', combiningBlocks: 'Parsing... assembling blocks…', showingStage: 'Parsing... showing {stage}…',
     stageOutline: 'outline lines', stageCurves: 'arcs and curves', stageAnnotation: 'dimensions and leaders', stageText: 'text', stageHatch: 'hatch boundaries',
@@ -121,6 +125,21 @@ function applyLanguage() {
 }
 
 window.cadViewerI18n = { t, get language() { return language; } };
+
+const MODEL_QUALITY_COOKIE = 'cadViewer3dQuality';
+
+function readModelQuality() {
+  const entry = document.cookie.split('; ').find((value) => value.startsWith(`${MODEL_QUALITY_COOKIE}=`));
+  return entry?.split('=')[1] === 'quality' ? 'quality' : 'fast';
+}
+
+let modelQuality = readModelQuality();
+modelQualitySelect.value = modelQuality;
+modelQualitySelect.addEventListener('change', () => {
+  modelQuality = modelQualitySelect.value === 'quality' ? 'quality' : 'fast';
+  document.cookie = `${MODEL_QUALITY_COOKIE}=${modelQuality}; Max-Age=31536000; Path=/; SameSite=Lax`;
+  window.location.reload();
+});
 
 const STAGES = [
   { key: 'outline', labelKey: 'stageOutline' },
@@ -205,10 +224,10 @@ const METAL_FINISHES = Object.freeze({
     roughness: 0.46,
     reflectionStrength: 0.72,
     antiqueStrength: 0.55,
-    patinaColor: [0.035, 0.030, 0.028],
+    patinaColor: [0.014, 0.012, 0.011],
     antiqueAtlasOffset: 0.5,
-    antiqueTextureScale: 3.5,
-    antiquePitStrength: 0.48,
+    antiqueTextureScale: 2.1,
+    antiquePitStrength: 0.72,
   },
 });
 
@@ -1179,6 +1198,7 @@ function render() {
 }
 
 async function openCadBuffer(name, buffer) {
+  modelQualityControl.hidden = true;
   activateRenderer('cad');
   modelViewer.cancelImport();
   beginDrawingLoad();
@@ -1221,6 +1241,7 @@ async function openCadBuffer(name, buffer) {
 }
 
 async function openModelBuffer(name, buffer, format) {
+  modelQualityControl.hidden = false;
   beginDrawingLoad();
   worker?.terminate();
   worker = undefined;
@@ -1242,10 +1263,13 @@ async function openModelBuffer(name, buffer, format) {
     information = modelViewer.loadStl(buffer);
   } else {
     setStatus('modelParsing', { format: format.toUpperCase() });
+    const importerWorker = modelQuality === 'quality'
+      ? './vendor/occt-js/occt-js-worker.js?v=20260910-occt79-release-1'
+      : './vendor/occt-import-js/occt-import-js-worker.js?v=20260826-stp-history-fix-1';
     information = await modelViewer.importOcct(
       buffer,
       format,
-      './vendor/occt-import-js/occt-import-js-worker.js?v=20260826-stp-history-fix-1',
+      importerWorker,
     );
   }
   if (generation !== loadGeneration) return;
