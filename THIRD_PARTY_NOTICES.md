@@ -16,21 +16,9 @@ These components are distributed under GPL-3.0-or-later. The licence text is in 
 
 The bundled build is pinned to GNU LibreDWG `0.14.8556` (`e405fcff2eaff86b8389222b7e99529284e7ea0a`) and mlightcad/libredwg-web `v0.7.9` (`b70b5573a6bf2345e5fb10f2adff7fb74a8123c5`), plus the Golden Luck progressive-viewer modifications. The complete source subset used for the build, build instructions and artifact hashes are retained under [`corresponding-source/libredwg-web-20260805/`](corresponding-source/libredwg-web-20260805/) and documented in [`CORRESPONDING_SOURCE.md`](CORRESPONDING_SOURCE.md).
 
-## Active OpenCascade model importer
+## OpenCascade model importer
 
-STEP, STP, IGES, IGS, BREP, and BRP files are imported by `@tx-code/occt-js` 0.1.7 and Open CASCADE Technology 7.9.3 in a browser Web Worker. The bundled runtime files are:
-
-- `cad-viewer/vendor/occt-js/occt-js.js`
-- `cad-viewer/vendor/occt-js/occt-js.wasm`
-- `cad-viewer/vendor/occt-js/occt-js-worker.js`
-
-`@tx-code/occt-js`, its bridge code, and the bundled Open CASCADE runtime are distributed under LGPL-2.1. Open CASCADE is also covered by its published LGPL exception. The package notice and upstream source links are retained as `cad-viewer/vendor/occt-js/LICENSE`.
-
-The bundled npm release is `@tx-code/occt-js` 0.1.7, repository commit `bdb80fca8ece2e32dc9444fdd41607decb393d92`, with Open CASCADE Technology tag `V7_9_3`. Exact source links and runtime hashes are recorded in [`CORRESPONDING_SOURCE.md`](CORRESPONDING_SOURCE.md).
-
-## Legacy OpenCascade model importer
-
-The earlier occt-import-js 0.0.23 runtime remains in the source distribution for compatibility and provenance, but is no longer selected by the default viewer. Its bundled files are:
+STEP, STP, IGES, IGS, BREP, and BRP files are imported by occt-import-js 0.0.23 and Open CASCADE Technology in a browser Web Worker. The bundled runtime files are:
 
 - cad-viewer/vendor/occt-import-js/occt-import-js.js
 - cad-viewer/vendor/occt-import-js/occt-import-js.wasm
