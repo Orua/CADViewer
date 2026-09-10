@@ -1,5 +1,5 @@
 ﻿const canvas = document.querySelector('#fastCanvas');
-import { ModelViewer3D } from './model-viewer.js?v=20260910-extrusion-1';
+import { ModelViewer3D } from './model-viewer.js?v=20260910-24k-premium-1';
 
 const context = canvas.getContext('2d', { alpha: false });
 const modelCanvas = document.querySelector('#modelCanvas');
@@ -186,7 +186,7 @@ const MODEL_FORMATS = new Map([
 const METAL_FINISHES = Object.freeze({
   'light-gold': { color: [0.82, 0.58, 0.24], roughness: 0.105, reflectionStrength: 1.28 },
   nickel: { color: [0.72, 0.74, 0.76], roughness: 0.12, reflectionStrength: 1.22 },
-  '24k-gold': { color: [1.0, 0.64, 0.08], roughness: 0.08, reflectionStrength: 1.35 },
+  '24k-gold': { color: [0.88, 0.49, 0.10], roughness: 0.14, reflectionStrength: 1.08, metalBodyTint: 0.13 },
   gunmetal: { color: [0.18, 0.21, 0.24], roughness: 0.15, reflectionStrength: 1.18 },
   'matt-nickel': { color: [0.62, 0.64, 0.66], roughness: 0.60, reflectionStrength: 0.48 },
   'matt-light-gold': { color: [0.70, 0.48, 0.21], roughness: 0.59, reflectionStrength: 0.50 },

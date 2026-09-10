@@ -511,6 +511,7 @@ function createProgram(gl) {
     'uniform vec3 uMetalColor;',
     'uniform float uRoughness;',
     'uniform float uReflectionStrength;',
+    'uniform float uMetalBodyTint;',
     'uniform float uAntiqueStrength;',
     'uniform vec3 uPatinaColor;',
     'uniform float uModelRadius;',
@@ -625,7 +626,7 @@ function createProgram(gl) {
     '  environment = mix(environment, vec3(0.50, 0.52, 0.55), clamp(roughness * roughness * 3.1, 0.0, 0.88) * (1.0 - uStudioReady));',
     '  vec3 edgeFresnel = fresnelSchlick(nDotV, metalF0);',
     '  vec3 metalSurface = environment * edgeFresnel * uReflectionStrength + directSpecular * nDotL * vec3(2.8, 2.65, 2.35) * uReflectionStrength * 0.78 * (1.0 - uStudioReady);',
-    '  metalSurface += metalF0 * 0.055;',
+    '  metalSurface += metalF0 * uMetalBodyTint;',
     // Antique finishes use stable object-space variation, so the aged marks
     // remain attached to the product while it rotates instead of shimmering.
     '  vec3 antiquePoint = vObjectPosition / max(uModelRadius, 0.001);',
@@ -882,6 +883,7 @@ export class ModelViewer3D {
       color: [0.82, 0.58, 0.24],
       roughness: 0.105,
       reflectionStrength: 1.28,
+      metalBodyTint: 0.055,
       antiqueStrength: 0,
       patinaColor: [0.04, 0.03, 0.02],
       antiqueAtlasOffset: 0,
@@ -923,6 +925,7 @@ export class ModelViewer3D {
       metalColor: this.gl.getUniformLocation(this.program, 'uMetalColor'),
       roughness: this.gl.getUniformLocation(this.program, 'uRoughness'),
       reflectionStrength: this.gl.getUniformLocation(this.program, 'uReflectionStrength'),
+      metalBodyTint: this.gl.getUniformLocation(this.program, 'uMetalBodyTint'),
       antiqueStrength: this.gl.getUniformLocation(this.program, 'uAntiqueStrength'),
       patinaColor: this.gl.getUniformLocation(this.program, 'uPatinaColor'),
       modelRadius: this.gl.getUniformLocation(this.program, 'uModelRadius'),
@@ -991,6 +994,7 @@ export class ModelViewer3D {
       color: color.length === 3 && color.every(Number.isFinite) ? color.map((value) => clamp(value, 0, 1)) : this.metalFinish.color,
       roughness: clamp(Number(finish.roughness) || this.metalFinish.roughness, 0.06, 0.62),
       reflectionStrength: clamp(Number(finish.reflectionStrength) || this.metalFinish.reflectionStrength, 0.25, 1.6),
+      metalBodyTint: clamp(Number(finish.metalBodyTint) || 0.055, 0.02, 0.2),
       antiqueStrength: clamp(Number(finish.antiqueStrength) || 0, 0, 1),
       antiqueAtlasOffset: clamp(Number(finish.antiqueAtlasOffset) || 0, 0, 0.5),
       antiqueTextureScale: clamp(Number(finish.antiqueTextureScale) || 1.35, 0.5, 6),
@@ -1319,6 +1323,7 @@ export class ModelViewer3D {
     gl.uniform3fv(this.locations.metalColor, this.metalFinish.color);
     gl.uniform1f(this.locations.roughness, this.metalFinish.roughness);
     gl.uniform1f(this.locations.reflectionStrength, this.metalFinish.reflectionStrength);
+    gl.uniform1f(this.locations.metalBodyTint, this.metalFinish.metalBodyTint);
     gl.uniform1f(this.locations.antiqueStrength, this.metalFinish.antiqueStrength);
     gl.uniform3fv(this.locations.patinaColor, this.metalFinish.patinaColor);
     gl.uniform1f(this.locations.modelRadius, this.geometry.radius);
