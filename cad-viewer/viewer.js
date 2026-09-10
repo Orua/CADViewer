@@ -134,10 +134,23 @@ function readModelQuality() {
 }
 
 let modelQuality = readModelQuality();
+let currentLocalModelFile;
 modelQualitySelect.value = modelQuality;
-modelQualitySelect.addEventListener('change', () => {
+modelQualitySelect.addEventListener('change', async () => {
   modelQuality = modelQualitySelect.value === 'quality' ? 'quality' : 'fast';
   document.cookie = `${MODEL_QUALITY_COOKIE}=${modelQuality}; Max-Age=31536000; Path=/; SameSite=Lax`;
+  if (currentLocalModelFile) {
+    try {
+      await openDrawingBuffer(currentLocalModelFile.name, await currentLocalModelFile.arrayBuffer());
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      setStatus('openFailed', { message: error instanceof Error ? error.message : String(error) });
+      openButton.disabled = false;
+      setLoading(false);
+      finishDrawingLoad();
+    }
+    return;
+  }
   window.location.reload();
 });
 
@@ -1307,6 +1320,8 @@ async function openDrawingBuffer(name, buffer) {
 
 async function openFile(file) {
   try {
+    const extension = String(file.name).split('.').pop().toLowerCase();
+    currentLocalModelFile = MODEL_FORMATS.has(extension) ? file : undefined;
     window.cadViewerDrawingList?.openLocal(file.name);
     await openDrawingBuffer(file.name, await file.arrayBuffer());
   } catch (error) {
@@ -1321,6 +1336,7 @@ async function openFile(file) {
 async function openUrl(url) {
   const name = decodeURIComponent(new URL(url, window.location.href).pathname.split('/').pop() || t('drawingFile'));
   try {
+    currentLocalModelFile = undefined;
     window.cadViewerDrawingList?.openUrl(url);
     setLoading(true);
     setStatus('downloading', { name });
