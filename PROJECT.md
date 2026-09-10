@@ -20,9 +20,13 @@ For supported 3D models, the right-side finish switch applies a WebGL visual tre
 
 This feature is for visual communication only. It does not replace an approved physical sample, a plating/PVD specification, colour tolerances, coating thickness or production acceptance criteria.
 
-The viewer bundles a 1K studio HDR environment, decoded into a WebGL-compatible texture. Roughness controls reflection filtering; explicit texture LOD is used when supported to avoid derivative-driven reflection artifacts. Imported CAD normals are retained rather than re-averaged from tessellation. Antique finishes combine the supplied texture with spatially varied polished reflections. No external rendering service or CAD geometry edits are involved; ground contact shadows and path-traced self-reflections are not implemented.
+For supported long, axis-aligned extruded faces, a guarded display-normal correction uses repeated cross-sections and local curve fitting to reduce reflection ripples. Other faces retain their imported normals; vertices and source CAD files remain unchanged.
 
-查看器内置 1K 摄影棚 HDR 环境并解码为 WebGL 兼容纹理。粗糙度控制反射过滤；设备支持时使用明确的纹理层级，减少自动层级造成的反射碎点。保留 CAD 导入法线，不再按三角网格重新平均。仿古效果结合参考纹理与局部磨亮反射。不调用外部渲染服务，不改 CAD 几何；目前未实现地面接触阴影或路径追踪自身反射。
+对于符合条件的轴向长拉伸面，查看器通过重复截面和局部曲线拟合修正显示法线，减少反光波纹。其他面保留导入法线，不改变顶点或原始 CAD 文件。
+
+The viewer bundles a 1K studio HDR environment, decoded into a WebGL-compatible texture. Roughness controls explicit interpolation between guttered atlas levels, without screen-derivative LOD or texture-LOD extensions. Longitude gutters wrap continuously; texture uploads explicitly reset vertical-flip state. Imported CAD normals are retained rather than re-averaged from tessellation. Antique finishes combine the supplied texture with spatially varied polished reflections. No external rendering service or CAD geometry edits are involved; ground contact shadows and path-traced self-reflections are not implemented.
+
+查看器内置 1K 摄影棚 HDR 环境并解码为 WebGL 兼容纹理。粗糙度控制带边缘保护像素的图集层级插值，不依赖屏幕导数或纹理层级扩展；经度接缝连续，上传纹理时明确还原垂直翻转状态。保留 CAD 导入法线，不再按三角网格重新平均。仿古效果结合参考纹理与局部磨亮反射。不调用外部渲染服务，不改 CAD 几何；目前未实现地面接触阴影或路径追踪自身反射。
 
 此功能仅用于视觉沟通，不能替代批准实体样、电镀或 PVD 规格、颜色公差、镀层厚度或量产验收标准。
 

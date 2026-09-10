@@ -1,4 +1,5 @@
 ﻿const DEFAULT_MODEL_COLOR = [0.36, 0.65, 0.93];
+import { repairExtrusionNormals } from './extrusion-normals.js?v=20260910-3';
 // Creo's ordinary shaded view is a light, neutral engineering viewport.
 // Keep this independent from the 2D drawing canvas' dark-mode preference.
 const CREO_MODEL_BACKGROUND = '#eef0f4';
@@ -53,29 +54,49 @@ function triangleAreaAt(positions, index) {
 }
 
 function dominantMaterialMask(positions, colors, useInputColors) {
-  const metalness = new Float32Array(colors.length);
+  const metalness = new Float32Array(colors.length / 3);
   if (!useInputColors) {
     metalness.fill(1);
     return metalness;
   }
 
-  const coverage = new Map();
-  for (let index = 0; index < colors.length; index += 9) {
-    const key = colorKeyAt(colors, index);
-    coverage.set(key, (coverage.get(key) || 0) + triangleAreaAt(positions, index));
+  // A monochrome model is metal regardless of its colour. No named-colour
+  // exclusions: multicolour models use only the agreed colour families.
+  const firstColor = colorKeyAt(colors, 0);
+  let monochrome = true;
+  for (let index = 3; index < colors.length; index += 3) {
+    if (colorKeyAt(colors, index) !== firstColor) { monochrome = false; break; }
   }
-  let baseKey = null;
-  let largestCoverage = -1;
-  for (const [key, count] of coverage) {
-    if (count > largestCoverage) {
-      baseKey = key;
-      largestCoverage = count;
-    }
-  }
+  if (monochrome) { metalness.fill(1); return metalness; }
+
   for (let index = 0; index < colors.length; index += 3) {
-    metalness[index / 3] = colorKeyAt(colors, index) === baseKey ? 1 : 0;
+    metalness[index / 3] = isMetalCandidate(colors.subarray(index, index + 3)) ? 1 : 0;
   }
   return metalness;
+}
+
+// OCCT returns linear RGB. Classify in display RGB so the tolerance agrees
+// with Creo colour swatches. This is a user convention, not material inference.
+export function isMetalCandidate(linearColor) {
+  const rgb = Array.from(linearColor, value => {
+    const v = clamp(value, 0, 1);
+    return v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+  });
+  const [r, g, b] = rgb;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const delta = max - min;
+  const saturation = max > 0 ? delta / max : 0;
+  let hue = 0;
+  if (delta > 0.00001) {
+    hue = 60 * (max === r ? ((g - b) / delta) % 6 : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4);
+    if (hue < 0) hue += 360;
+  }
+  // Broad family ranges, not a red/white/blue exception list.
+  const gold = hue >= 28 && hue <= 65 && saturation >= 0.22 && max >= 0.25;
+  const grey = saturation <= 0.12 && max >= 0.20 && max <= 0.94;
+  const blueGrey = hue >= 185 && hue <= 245 && saturation <= 0.32 && max >= 0.25 && max <= 0.98;
+  const lightBlue = hue >= 185 && hue <= 245 && saturation <= 0.55 && min >= 0.40 && max <= 0.98;
+  return gold || grey || blueGrey || lightBlue;
 }
 
 function hexToRgb(hex) {
@@ -380,9 +401,11 @@ function geometryFromOcctResult(result, format) {
     // OCCT supplies surface normals. Re-averaging the tessellation introduces
     // triangulation-dependent ripples in mirror reflections on smooth CAD faces.
     const displayNormals = sourceNormals && sourceNormals.length === sourcePositions.length
-      ? sourceNormals : rebuildOcctSmoothNormals(sourcePositions, indices, sourceNormals);
+      ? repairExtrusionNormals(mesh) : rebuildOcctSmoothNormals(sourcePositions, indices, sourceNormals);
 
-    const defaultColor = normalizeColor(mesh.color);
+    // Missing imported appearance is not an actual cyan finish. Give unassigned
+    // CAD surfaces a neutral metal candidate; explicit face colours still win.
+    const defaultColor = normalizeColor(mesh.color, [0.40, 0.44, 0.50]);
     const faces = Array.isArray(mesh.brep_faces) ? mesh.brep_faces : [];
     let faceCursor = 0;
     for (let triangle = 0; triangle < Math.floor(indices.length / 3); triangle += 1) {
@@ -474,7 +497,6 @@ function createProgram(gl) {
     '}',
   ].join('\n');
   const fragmentSource = [
-    '#extension GL_EXT_shader_texture_lod : enable',
     '#ifdef GL_FRAGMENT_PRECISION_HIGH',
     'precision highp float;',
     '#else',
@@ -534,26 +556,25 @@ function createProgram(gl) {
     '  float k = (roughness + 1.0) * (roughness + 1.0) / 8.0;',
     '  return nDotDirection / max(nDotDirection * (1.0 - k) + k, 0.0001);',
     '}',
-    'vec3 studioSample(vec3 direction, float blur) {',
-    '  vec2 uv = vec2(fract(atan(direction.z, direction.x) / 6.2831853 + 0.65), acos(clamp(direction.y, -1.0, 1.0)) / 3.14159265);',
-    '#ifdef GL_EXT_shader_texture_lod',
-    '  vec3 encoded = texture2DLodEXT(uStudioTexture, uv, 2.0 + blur * 7.0).rgb;',
-    '#else',
-    '  vec3 encoded = texture2D(uStudioTexture, uv, 1.0 + blur * 4.0).rgb;',
-    '#endif',
+    // Explicit atlas levels avoid screen-derivative LOD jumps at longitude seams
+    // on every WebGL device, including those without texture-LOD extensions.
+    'vec3 studioLevel(vec2 uv, float level) {',
+    '  float scale = exp2(-level);',
+    '  vec2 size = vec2(1024.0, 512.0) * scale;',
+    '  float top = 1024.0 * (1.0 - scale) + 2.0 * level;',
+    '  vec2 pixel = vec2(1.0, top + 1.0) + uv * size;',
+    '  vec3 encoded = texture2D(uStudioTexture, pixel / vec2(1026.0, 1040.0)).rgb;',
     '  return encoded * encoded * 32.0;',
+    '}',
+    'vec3 studioSample(vec3 direction, float blur) {',
+    '  vec2 uv = vec2(fract(atan(direction.z, direction.x) / 6.2831853 + 0.65), 1.0 - acos(clamp(direction.y, -1.0, 1.0)) / 3.14159265);',
+    '  float lod = clamp(2.0 + blur * 7.0, 0.0, 8.0);',
+    '  float low = floor(lod);',
+    '  return mix(studioLevel(uv, low), studioLevel(uv, min(low + 1.0, 8.0)), fract(lod));',
     '}',
     'vec3 studioEnvironment(vec3 direction) {',
     '  if (uStudioReady > 0.5) {',
-    '    vec3 tangent = normalize(cross(direction, abs(direction.y) < 0.95 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));',
-    '    vec3 bitangent = cross(direction, tangent);',
-    '    float spread = uRoughness * uRoughness * 0.6;',
-    '    vec3 radiance = studioSample(direction, uRoughness) * 0.2;',
-    '    for (int i = 0; i < 8; i++) {',
-    '      float angle = float(i) * 0.785398;',
-    '      radiance += studioSample(normalize(direction + spread * (cos(angle) * tangent + sin(angle) * bitangent)), uRoughness) * 0.1;',
-    '    }',
-    '    return radiance;',
+    '    return studioSample(direction, uRoughness);',
     '  }',
     '  float height = direction.y * 0.5 + 0.5;',
     '  vec3 environment = mix(vec3(0.018, 0.022, 0.032), vec3(0.62, 0.68, 0.78), smoothstep(0.08, 0.92, height));',
@@ -580,8 +601,8 @@ function createProgram(gl) {
     '}',
     'void main(void) {',
     '  vec3 normal = normalize(vNormal);',
-    // The largest STEP colour group is the substrate. Only it receives the
-    // gold metal finish; coloured markings retain their exported RGB.
+    // Gold/yellow and subdued grey/blue-grey source colours are the agreed
+    // metal candidates. Other colours keep ordinary nonmetal shading.
     '  float metalness = clamp(vMetalness, 0.0, 1.0);',
     '  vec3 inputColor = max(vColor, vec3(0.0));',
     '  vec3 metalF0 = uMetalColor;',
@@ -638,13 +659,19 @@ function createProgram(gl) {
     '  float textureMean = mix(0.34, 0.57, step(0.25, uAntiqueAtlasOffset));',
     '  float materialVariation = clamp(pow(max(textureLuma / textureMean, 0.05), 0.62), 0.48, 1.38);',
     '  float exposedHighlight = smoothstep(0.42, 0.92, nDotL) * (1.0 - patina);',
-    '  vec3 wornReflection = studioSample(reflectionDirection, 0.12) * edgeFresnel * 1.25;',
+    '  vec3 wornReflection = studioSample(reflectionDirection, 0.48) * edgeFresnel * uReflectionStrength;',
     '  float wear = smoothstep(0.20, 0.70, antiqueCloud * 0.6 + antiqueStreak * 0.4);',
-    '  vec3 agedMetal = mix(metalSurface, wornReflection, wear * uStudioReady) * mix(0.98, 0.62, patina);',
+    '  vec3 agedMetal = mix(metalSurface, wornReflection, wear * uStudioReady * 0.25) * mix(0.98, 0.62, patina);',
     '  agedMetal *= mix(1.0, materialVariation, 0.72);',
     '  agedMetal = mix(agedMetal, uPatinaColor, clamp(patina * 0.15 + pits * 0.82, 0.0, 0.88));',
     '  agedMetal += metalF0 * (0.035 + exposedHighlight * 0.05);',
     '  metalSurface = mix(metalSurface, agedMetal, clamp(uAntiqueStrength, 0.0, 1.0));',
+    // Broad satin scattering: soften reflected images without painting white
+    // over the surface. The finish colour and low-frequency grain remain.
+    '  float haze = smoothstep(0.45, 0.62, roughness) * (1.0 - uAntiqueStrength) * 0.42;',
+    '  vec3 satin = metalF0 * (0.32 + 0.30 * max(normal.y, 0.0) + 0.22 * nDotL);',
+    '  satin *= 0.97 + 0.06 * antiqueNoise(antiquePoint * 160.0);',
+    '  metalSurface = mix(metalSurface, satin, haze);',
     '  float diffuse = max(dot(normal, lightDirection), 0.0);',
     '  float fill = max(dot(normal, normalize(vec3(-0.52, 0.26, 0.48))), 0.0);',
     '  float sky = normal.y * 0.5 + 0.5;',
@@ -718,6 +745,7 @@ function createAntiqueTexture(gl, onReady) {
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -777,12 +805,53 @@ async function loadStudioTexture(gl, texture) {
       pixels[(y * width + x) * 4 + 3] = 255;
     }
   }
+  // A guttered mip atlas is filtered explicitly in the shader, never from
+  // derivatives of atan/fract. Average decoded radiance, not encoded bytes.
+  const atlasWidth = 1026;
+  const atlasHeight = 1040;
+  const atlas = new Uint8Array(atlasWidth * atlasHeight * 4);
+  let levelPixels = pixels;
+  let levelWidth = width;
+  let levelHeight = height;
+  let top = 0;
+  for (let level = 0; level <= 8; level++) {
+    for (let y = -1; y <= levelHeight; y++) {
+      const sourceY = Math.max(0, Math.min(levelHeight - 1, y));
+      for (let x = -1; x <= levelWidth; x++) {
+        const sourceX = (x + levelWidth) % levelWidth;
+        const source = (sourceY * levelWidth + sourceX) * 4;
+        atlas.set(levelPixels.subarray(source, source + 4), ((top + y + 1) * atlasWidth + x + 1) * 4);
+      }
+    }
+    top += levelHeight + 2;
+    if (level === 8) break;
+    const nextWidth = levelWidth / 2;
+    const nextHeight = levelHeight / 2;
+    const next = new Uint8Array(nextWidth * nextHeight * 4);
+    for (let y = 0; y < nextHeight; y++) {
+      for (let x = 0; x < nextWidth; x++) {
+        const target = (y * nextWidth + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          let radiance = 0;
+          for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+            const value = levelPixels[((y * 2 + dy) * levelWidth + x * 2 + dx) * 4 + c];
+            radiance += value * value;
+          }
+          next[target + c] = Math.round(Math.sqrt(radiance * 0.25));
+        }
+        next[target + 3] = 255;
+      }
+    }
+    levelPixels = next;
+    levelWidth = nextWidth;
+    levelHeight = nextHeight;
+  }
   gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-  gl.generateMipmap(gl.TEXTURE_2D);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, atlasWidth, atlasHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, atlas);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 }
 
@@ -827,7 +896,6 @@ export class ModelViewer3D {
     });
     if (!this.gl) fail('当前浏览器或显卡不支持 WebGL。');
 
-    this.gl.getExtension('EXT_shader_texture_lod');
     this.program = createProgram(this.gl);
     this.positionBuffer = this.gl.createBuffer();
     this.normalBuffer = this.gl.createBuffer();
@@ -995,11 +1063,10 @@ export class ModelViewer3D {
         params: {
           linearUnit: 'millimeter',
           linearDeflectionType: 'bounding_box_ratio',
-          linearDeflection: parameters.linearDeflection || 0.001,
-          // 0.5 radian facets round parts too visibly, especially once studio
-          // reflections make each facet apparent. 0.12 keeps curved STEP
-          // geometry smooth without changing the source solid or its colours.
-          angularDeflection: parameters.angularDeflection || 0.12,
+          linearDeflection: parameters.linearDeflection || 0.0005,
+          // Refine display tessellation for reflective curved parts without
+          // modifying the source solid. Keep cost bounded for assemblies.
+          angularDeflection: parameters.angularDeflection || 0.08,
         },
       }, [bytes.buffer]);
     });
