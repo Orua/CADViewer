@@ -1,5 +1,6 @@
 ﻿const DEFAULT_MODEL_COLOR = [0.36, 0.65, 0.93];
 import { repairExtrusionNormals } from './extrusion-normals.js?v=20260910-3';
+import { buildSurfaceBoundaryCoordinates } from './surface-boundaries.js?v=20261010-1';
 // Creo's ordinary shaded view is a light, neutral engineering viewport.
 // Keep this independent from the 2D drawing canvas' dark-mode preference.
 const CREO_MODEL_BACKGROUND = '#eef0f4';
@@ -168,7 +169,7 @@ function mat4Perspective(fieldOfView, aspect, near, far) {
   ]);
 }
 
-function finalizeGeometry(rawPositions, rawNormals, rawColors, format) {
+function finalizeGeometry(rawPositions, rawNormals, rawColors, format, surfaceBoundaries = null) {
   if (!rawPositions.length || rawPositions.length % 9 !== 0) {
     fail('文件中没有可显示的三角面。');
   }
@@ -220,6 +221,7 @@ function finalizeGeometry(rawPositions, rawNormals, rawColors, format) {
     normals,
     colors,
     metalness,
+    surfaceBoundaries: surfaceBoundaries || new Float32Array(rawPositions.length).fill(1),
     triangles: positions.length / 9,
     dimensions,
     radius: Math.max(Math.hypot(dimensions.x, dimensions.y, dimensions.z) / 2, 0.001),
@@ -391,6 +393,7 @@ function geometryFromOcctResult(result, format) {
   const positions = new Float32Array(triangleCount * 9);
   const normals = new Float32Array(triangleCount * 9);
   const colors = new Float32Array(triangleCount * 9);
+  const surfaceBoundaries = new Float32Array(triangleCount * 9).fill(1);
   let outputOffset = 0;
 
   for (const mesh of result.meshes) {
@@ -398,6 +401,7 @@ function geometryFromOcctResult(result, format) {
     const sourceNormals = mesh && mesh.attributes && mesh.attributes.normal && mesh.attributes.normal.array;
     const indices = mesh && mesh.index && mesh.index.array;
     if (!sourcePositions || !indices) continue;
+    surfaceBoundaries.set(buildSurfaceBoundaryCoordinates(mesh), outputOffset);
     // OCCT supplies surface normals. Re-averaging the tessellation introduces
     // triangulation-dependent ripples in mirror reflections on smooth CAD faces.
     const displayNormals = sourceNormals && sourceNormals.length === sourcePositions.length
@@ -451,6 +455,7 @@ function geometryFromOcctResult(result, format) {
     normals.subarray(0, outputOffset),
     colors.subarray(0, outputOffset),
     format,
+    surfaceBoundaries.subarray(0, outputOffset),
   );
 }
 
@@ -467,11 +472,13 @@ function compileShader(gl, type, source) {
 }
 
 function createProgram(gl) {
+  const boundaryDerivatives = Boolean(gl.getExtension('OES_standard_derivatives'));
   const vertexSource = [
     'attribute vec3 aPosition;',
     'attribute vec3 aNormal;',
     'attribute vec3 aColor;',
     'attribute float aMetalness;',
+    'attribute vec3 aSurfaceBoundary;',
     'uniform mat4 uProjection;',
     'uniform mat4 uView;',
     'uniform mat4 uModel;',
@@ -479,6 +486,7 @@ function createProgram(gl) {
     'varying vec3 vNormal;',
     'varying vec3 vColor;',
     'varying float vMetalness;',
+    'varying vec3 vSurfaceBoundary;',
     'varying vec3 vViewPosition;',
     'varying vec3 vObjectPosition;',
     'varying vec3 vObjectNormal;',
@@ -489,6 +497,7 @@ function createProgram(gl) {
     '  vNormal = normalize(uNormalMatrix * aNormal);',
     '  vColor = aColor;',
     '  vMetalness = aMetalness;',
+    '  vSurfaceBoundary = aSurfaceBoundary;',
     '  vObjectPosition = aPosition;',
     '  vObjectNormal = aNormal;',
     '  vec4 viewPosition = uView * uModel * vec4(aPosition, 1.0);',
@@ -497,6 +506,7 @@ function createProgram(gl) {
     '}',
   ].join('\n');
   const fragmentSource = [
+    boundaryDerivatives ? '#extension GL_OES_standard_derivatives : enable' : '',
     '#ifdef GL_FRAGMENT_PRECISION_HIGH',
     'precision highp float;',
     '#else',
@@ -505,6 +515,7 @@ function createProgram(gl) {
     'varying vec3 vNormal;',
     'varying vec3 vColor;',
     'varying float vMetalness;',
+    'varying vec3 vSurfaceBoundary;',
     'varying vec3 vViewPosition;',
     'varying vec3 vObjectPosition;',
     'varying vec3 vObjectNormal;',
@@ -680,6 +691,14 @@ function createProgram(gl) {
     '  float sky = normal.y * 0.5 + 0.5;',
     '  vec3 ordinarySurface = inputColor * (mix(vec3(0.72), vec3(0.98), sky) + 0.38 * diffuse + 0.12 * fill);',
     '  vec3 shaded = mix(ordinarySurface, metalSurface, metalness);',
+    // A subtle, depth-tested boundary belongs to the surface shader itself.
+    // No black overlay, hidden lines, polygon offset or triangular wireframe.
+    ...(boundaryDerivatives ? [
+      '  vec3 boundaryWidth = max(fwidth(vSurfaceBoundary), vec3(0.000001));',
+      '  vec3 boundaryBlend = smoothstep(vec3(0.0), boundaryWidth * 0.75, vSurfaceBoundary);',
+      '  float surfaceEdge = 1.0 - min(boundaryBlend.x, min(boundaryBlend.y, boundaryBlend.z));',
+      '  shaded *= 1.0 - surfaceEdge * metalness * 0.18;',
+    ] : []),
     '  gl_FragColor = vec4(linearToSrgb(acesToneMap(shaded)), 1.0);',
     '}',
   ].join('\n');
@@ -907,6 +926,7 @@ export class ModelViewer3D {
     this.normalBuffer = this.gl.createBuffer();
     this.colorBuffer = this.gl.createBuffer();
     this.metalnessBuffer = this.gl.createBuffer();
+    this.surfaceBoundaryBuffer = this.gl.createBuffer();
     this.antiqueTexture = createAntiqueTexture(this.gl, () => this.requestDraw());
     this.studioTexture = this.gl.createTexture();
     this.studioReady = 0;
@@ -918,6 +938,7 @@ export class ModelViewer3D {
       normal: this.gl.getAttribLocation(this.program, 'aNormal'),
       color: this.gl.getAttribLocation(this.program, 'aColor'),
       metalness: this.gl.getAttribLocation(this.program, 'aMetalness'),
+      surfaceBoundary: this.gl.getAttribLocation(this.program, 'aSurfaceBoundary'),
       projection: this.gl.getUniformLocation(this.program, 'uProjection'),
       view: this.gl.getUniformLocation(this.program, 'uView'),
       model: this.gl.getUniformLocation(this.program, 'uModel'),
@@ -1023,6 +1044,8 @@ export class ModelViewer3D {
     gl.bufferData(gl.ARRAY_BUFFER, geometry.colors, gl.STATIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.metalnessBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, geometry.metalness, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.surfaceBoundaryBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, geometry.surfaceBoundaries || new Float32Array(geometry.positions.length).fill(1), gl.STATIC_DRAW);
     this.yaw = -Math.PI / 4;
     this.pitch = Math.PI / 7;
     this.fit();
@@ -1349,6 +1372,11 @@ export class ModelViewer3D {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.metalnessBuffer);
     gl.enableVertexAttribArray(this.locations.metalness);
     gl.vertexAttribPointer(this.locations.metalness, 1, gl.FLOAT, false, 0, 0);
+    if (this.locations.surfaceBoundary >= 0) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.surfaceBoundaryBuffer);
+      gl.enableVertexAttribArray(this.locations.surfaceBoundary);
+      gl.vertexAttribPointer(this.locations.surfaceBoundary, 3, gl.FLOAT, false, 0, 0);
+    }
     gl.drawArrays(gl.TRIANGLES, 0, this.geometry.positions.length / 3);
   }
 
@@ -1360,6 +1388,7 @@ export class ModelViewer3D {
     this.gl.deleteBuffer(this.normalBuffer);
     this.gl.deleteBuffer(this.colorBuffer);
     this.gl.deleteBuffer(this.metalnessBuffer);
+    this.gl.deleteBuffer(this.surfaceBoundaryBuffer);
     this.gl.deleteProgram(this.program);
     this.gl.deleteTexture(this.studioTexture);
   }

@@ -22,6 +22,10 @@ This feature is for visual communication only. It does not replace an approved p
 
 For supported long, axis-aligned extruded faces, a guarded display-normal correction uses repeated cross-sections and local curve fitting to reduce reflection ripples. Other faces retain their imported normals; vertices and source CAD files remain unchanged.
 
+Metal rendering retains CAD face adjacency to add subtle, subpixel boundaries at open edges, creases above 20 degrees and imported colour transitions. Internal tessellation diagonals and tangent fillet seams remain hidden. The boundary is depth-tested inside the surface shader, so it does not expose hidden edges or draw a black wireframe. Devices without standard WebGL derivatives retain the normal metal shading.
+
+金属显示保留 CAD 面邻接信息，在开口、超过 20 度的折角和导入颜色交界处添加低对比细边界。三角剖分内部线和相切圆角接缝保持隐藏；边界在表面着色器中参与深度测试，不显示遮挡边。缺少标准 WebGL 导数扩展的设备继续使用原有金属着色。
+
 对于符合条件的轴向长拉伸面，查看器通过重复截面和局部曲线拟合修正显示法线，减少反光波纹。其他面保留导入法线，不改变顶点或原始 CAD 文件。
 
 The viewer bundles a 1K studio HDR environment, decoded into a WebGL-compatible texture. Roughness controls explicit interpolation between guttered atlas levels, without screen-derivative LOD or texture-LOD extensions. Longitude gutters wrap continuously; texture uploads explicitly reset vertical-flip state. Imported CAD normals are retained rather than re-averaged from tessellation. Antique finishes combine the supplied texture with spatially varied polished reflections. No external rendering service or CAD geometry edits are involved; ground contact shadows and path-traced self-reflections are not implemented.
