@@ -31,6 +31,12 @@ This architecture is intended to make very large drawings useful sooner while ke
 
 ## Features
 
+- A unified, minimal workspace with one file header, contextual 2D/3D tools, searchable recent files and a command palette (`Ctrl/Cmd K`).
+- Cancellable downloads and parsing, stale-request protection during rapid file switching, and inline retry/reselect actions on errors.
+- Local files reopen from the recent list during the current browser session; after a refresh the list clearly asks you to select them again. File bytes are not stored in history.
+- Isometric/front/top/right views for 3D, grouped bilingual surface finishes, remembered canvas backgrounds, finish and sidebar width, and a mobile file drawer.
+- `F` fits the view, `W` starts window zoom, `+`/`-` zoom, and `Esc` exits the tool. Shortcuts do not intercept text input. Loading locks view operations until parsing and fonts finish.
+
 - One file entry and shared toolbar for DWG, DXF, STL, STEP/STP, IGES/IGS, and BREP/BRP.
 - Local WebGL rendering for three-dimensional mesh and engineering-solid formats.
 - A right-side 3D surface-finish switch for the dominant/base component: Light Gold, Nickel, 24K Gold, Gunmetal, four satin/matte variants, Antique Brass, and Antique Silver. Antique finishes use a bundled reference texture with seamless object-space projection; other exported component colours remain unchanged.

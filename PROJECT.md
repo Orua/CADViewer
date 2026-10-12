@@ -36,6 +36,12 @@ The viewer bundles a 1K studio HDR environment, decoded into a WebGL-compatible 
 
 ## Interaction lock and UI language / 交互锁定与界面语言
 
+The workspace has one file entry and a context-sensitive toolbar: 2D pan and 3D orbit share the same location; standard 3D views and the grouped finish inspector appear only for models. Recent-file search distinguishes server files, local files available in the current session, and local entries requiring re-selection after refresh. Local file bytes stay in memory and are never persisted by the history UI.
+
+Opening a new file aborts the previous download and invalidates its parser generation. Cancellation stops both download and parser workers. Failed downloads restore access to an already complete view; parser failures offer inline retry or a new file selection. Partial drawings never unlock view controls. Keyboard shortcuts and the command palette invoke the same handlers as the visible tools.
+
+文件入口、上下文工具栏、最近文件搜索、命令搜索及错误恢复共用同一套操作。二维显示平移；三维显示旋转、标准视角与分组外观面板。加载可取消，切换文件会停止旧下载及解析，过期结果不能覆盖新文件。本机文件只在当前会话保留文件引用，刷新后明确提示重新选择。背景、外观、侧栏宽度保存为带版本的本机偏好。
+
 While the drawing is loading, the viewer does not bind pan, wheel-zoom, or zoom-window actions. A drag or wheel attempt only shows a wait cursor and a transient “Loading... please wait” hint near the pointer; it cannot change the camera. The actions are bound after all geometry, block references, and text/font work finish. A completed fast interaction reports its refinement-render duration in the status bar.
 
 The standalone viewer has a small built-in Chinese/English message catalog. Set `language` to `'zh-CN'` or `'en'` in `cad-viewer/viewer-config.js`; use the same setting in `viewer-config.local.js` for an offline or private deployment. The language is deliberately deployment-configured rather than selected through the UI.

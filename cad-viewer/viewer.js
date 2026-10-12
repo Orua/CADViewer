@@ -1,5 +1,7 @@
 ﻿const canvas = document.querySelector('#fastCanvas');
-import { ModelViewer3D } from './model-viewer.js?v=20261010-metal-boundaries-1';
+import { ModelViewer3D } from './model-viewer.js?v=20261012-workspace-1';
+import {FileSession, sameOriginFileUrl} from './file-session.js?v=20261012-workspace-1';
+import {SHELL_MESSAGES, createWorkspaceShell, readPreferences, savePreferences} from './viewer-shell.js?v=20261012-workspace-1';
 
 const context = canvas.getContext('2d', { alpha: false });
 const modelCanvas = document.querySelector('#modelCanvas');
@@ -41,6 +43,10 @@ window.cadViewerFontState = { dataBaseUrl: configuredDataBaseUrl, phase: 'idle' 
 function setFileSidebarVisible(visible) {
   fileSidebarColumn.classList.toggle('is-hidden', !visible);
   toolSidebarButton.classList.toggle('is-active', visible);
+  toolSidebarButton.setAttribute('aria-expanded', String(visible));
+  document.querySelector('#sidebarBackdrop').hidden = !visible || !phoneViewport.matches;
+  if (!visible) toolSidebarButton.focus({preventScroll:true});
+  window.dispatchEvent(new Event('resize'));
 }
 
 function syncSidebarForViewport() {
@@ -89,6 +95,8 @@ function normalizeLanguage(value) {
   return String(value || '').toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
 }
 
+for (const locale of Object.keys(SHELL_MESSAGES)) Object.assign(MESSAGES[locale], SHELL_MESSAGES[locale]);
+
 let language = normalizeLanguage(window.CAD_VIEWER_CONFIG?.language || 'zh-CN');
 
 function t(key, values = {}) {
@@ -100,6 +108,8 @@ function setStatus(key, values) {
   status.dataset.i18nStatus = key;
   status.i18nValues = values;
   status.textContent = t(key, values);
+  status.title = status.textContent;
+  document.querySelector('#loadingDetail').textContent = status.textContent;
 }
 
 function applyLanguage() {
@@ -171,6 +181,15 @@ let refineStartedAt = 0;
 let drawingLoadActive = false;
 let loadingHintTimer;
 let activeRenderer = 'cad';
+let shell;
+let currentName = '';
+let loadedName = '';
+let openError = '';
+let lastSource;
+const fileSession = new FileSession();
+const preferences = readPreferences();
+backgroundColor = preferences.cadLight === true ? '#f8fafc' : '#090b0e';
+modelBackgroundColor = preferences.modelLight === false ? '#090b0e' : CREO_MODEL_BACKGROUND;
 
 const CAD_EXTENSIONS = new Set(['dwg', 'dxf']);
 const MODEL_FORMATS = new Map([
@@ -226,18 +245,19 @@ function selectMetalFinish(name) {
     button.classList.toggle('is-active', selected);
     button.setAttribute('aria-pressed', String(selected));
   }
+  savePreferences({finish:name});
 }
 
 for (const button of metalFinishButtons) {
   button.addEventListener('click', () => selectMetalFinish(button.dataset.metalFinish));
 }
-selectMetalFinish('light-gold');
+selectMetalFinish(METAL_FINISHES[preferences.finish] ? preferences.finish : 'light-gold');
 
 function activateRenderer(renderer) {
   activeRenderer = renderer;
   canvas.hidden = renderer !== 'cad';
   modelViewer.setVisible(renderer === 'model');
-  metalFinishPanel.hidden = renderer !== 'model';
+  metalFinishPanel.hidden = true;
   toolBackgroundButton.classList.toggle(
     'is-active',
     (renderer === 'model' ? modelBackgroundColor : backgroundColor) !== '#090b0e',
@@ -249,17 +269,21 @@ function activateRenderer(renderer) {
     resize();
   }
   setInteractionMode('pan');
+  shell?.sync();
 }
 
 function setInteractionMode(mode) {
   interactionMode = mode;
   toolPanButton.classList.toggle('is-active', mode === 'pan');
   toolZoomWindowButton.classList.toggle('is-active', mode === 'zoom-window');
+  toolPanButton.setAttribute('aria-pressed', String(mode === 'pan'));
+  toolZoomWindowButton.setAttribute('aria-pressed', String(mode === 'zoom-window'));
   if (activeRenderer === 'model') {
     modelViewer.setInteractionMode(mode);
   } else {
     canvas.style.cursor = canvasInteractionsBound ? (mode === 'zoom-window' ? 'crosshair' : 'grab') : (drawingLoadActive ? 'wait' : 'default');
   }
+  shell?.sync();
 }
 
 function setDrawingInteractionControls(enabled) {
@@ -268,11 +292,13 @@ function setDrawingInteractionControls(enabled) {
   toolZoomInButton.disabled = !enabled;
   toolZoomOutButton.disabled = !enabled;
   toolZoomWindowButton.disabled = !enabled;
+  fitButton.disabled = !enabled;
   if (activeRenderer === 'model') {
     modelViewer.setEnabled(enabled);
   } else {
     canvas.style.cursor = enabled ? (interactionMode === 'zoom-window' ? 'crosshair' : 'grab') : (drawingLoadActive ? 'wait' : 'default');
   }
+  shell?.sync();
 }
 
 function showLoadingInteractionHint(event) {
@@ -341,6 +367,7 @@ function zoomToWindow(start, end) {
 function setLoading(isLoading) {
   loadingOverlay.hidden = !isLoading;
   emptyState.classList.toggle('hidden', isLoading || hasOpenedFile);
+  shell?.sync();
 }
 
 function emptyBounds() {
@@ -968,6 +995,7 @@ async function revealStages(generation, timing, summary) {
   }
   const seconds = ((performance.now() - openedAt) / 1000).toFixed(2);
   const parseSeconds = (timing.totalMs / 1000).toFixed(2);
+  if (generation !== loadGeneration) return;
   const remainder = unsupportedCount + unresolvedCount;
   setStatus('completed', {
     seconds,
@@ -978,6 +1006,7 @@ async function revealStages(generation, timing, summary) {
   finishDrawingLoad();
   bindCanvasInteractions();
   openButton.disabled = false;
+  completeOpen();
 }
 
 function resize() {
@@ -1196,26 +1225,25 @@ async function openCadBuffer(name, buffer) {
       consumeBatch(data.batch);
       hasOpenedFile = true;
       setLoading(false);
+      // Progressive geometry is visible, but interaction stays locked and the
+      // cancellable loading panel remains until fonts and refinement finish.
+      loadingOverlay.hidden = false;
       setStatus('loadingOutline');
     }
     if (data.type === 'done') {
       layerColors = new Map((data.summary.layers ?? []).map((layer) => [layer.name, layer]));
       hasOpenedFile = true;
       document.title = name;
-      revealStages(generation, data.timing, data.summary);
+      revealStages(generation, data.timing, data.summary).catch(error => {
+        if (generation === loadGeneration) failOpen(error);
+      });
     }
     if (data.type === 'error') {
-      setStatus('openFailed', { message: `${data.message}${data.errorCode === 'worker_oom' ? '（内存不足）' : ''}` });
-      openButton.disabled = false;
-      setLoading(false);
-      finishDrawingLoad();
+      failOpen(new Error(`${data.message}${data.errorCode === 'worker_oom' ? '（内存不足）' : ''}`));
     }
   };
   worker.onerror = (event) => {
-    setStatus('workerError', { message: event.message });
-    openButton.disabled = false;
-    setLoading(false);
-    finishDrawingLoad();
+    if (generation === loadGeneration) failOpen(new Error(event.message));
   };
   worker.postMessage({ type: 'open', buffer }, [buffer]);
 }
@@ -1267,6 +1295,7 @@ async function openModelBuffer(name, buffer, format) {
   setDrawingInteractionControls(true);
   fitButton.disabled = false;
   openButton.disabled = false;
+  completeOpen();
 }
 
 async function openDrawingBuffer(name, buffer) {
@@ -1282,39 +1311,87 @@ async function openDrawingBuffer(name, buffer) {
 }
 
 async function openFile(file) {
+  if (!file) return;
+  const request = beginOpen({file, name:file.name});
   try {
-    window.cadViewerDrawingList?.openLocal(file.name);
-    await openDrawingBuffer(file.name, await file.arrayBuffer());
+    validateFormat(file.name);
+    const buffer = await file.arrayBuffer();
+    if (!fileSession.isCurrent(request)) return;
+    await openDrawingBuffer(file.name, buffer);
   } catch (error) {
-    if (error?.name === 'AbortError') return;
-    setStatus('openFailed', { message: error instanceof Error ? error.message : String(error) });
-    openButton.disabled = false;
-    setLoading(false);
-    finishDrawingLoad();
+    if (fileSession.isCurrent(request) && error?.name !== 'AbortError') failOpen(error);
   }
 }
 
 async function openUrl(url) {
-  const name = decodeURIComponent(new URL(url, window.location.href).pathname.split('/').pop() || t('drawingFile'));
+  let request;
   try {
-    window.cadViewerDrawingList?.openUrl(url);
-    setLoading(true);
+    url = sameOriginFileUrl(url, window.location.href);
+    const basename = new URL(url).pathname.split('/').pop() || t('drawingFile');
+    let name; try { name = decodeURIComponent(basename); } catch { name = basename; }
+    request = beginOpen({url,name});
+    validateFormat(name);
     setStatus('downloading', { name });
-    const response = await fetch(url);
+    const response = await fetch(url, {signal:request.controller.signal});
     if (!response.ok) {
-      const message = t('historyPathUnavailable', { name });
-      setStatus('openFailed', { message });
-      window.alert(message);
-      return;
+      throw new Error(`${t('historyPathUnavailable', { name })} (HTTP ${response.status})`);
     }
-    await openDrawingBuffer(name, await response.arrayBuffer());
+    const buffer = await response.arrayBuffer();
+    if (!fileSession.isCurrent(request)) return;
+    await openDrawingBuffer(name, buffer);
   } catch (error) {
-    if (error?.name === 'AbortError') return;
-    setStatus('openFailed', { message: error instanceof Error ? error.message : String(error) });
-    openButton.disabled = false;
-    setLoading(false);
-    finishDrawingLoad();
+    if ((!request || fileSession.isCurrent(request)) && error?.name !== 'AbortError') failOpen(error);
   }
+}
+
+function validateFormat(name) {
+  const extension = String(name).split('.').pop().toLowerCase();
+  if (!CAD_EXTENSIONS.has(extension) && !MODEL_FORMATS.has(extension)) throw new Error(t('unsupportedFormat',{extension}));
+}
+
+function beginOpen(source) {
+  const request = fileSession.begin(source);
+  lastSource = source; currentName = source.name; openError = '';
+  loadGeneration++; worker?.terminate(); worker = undefined; modelViewer.cancelImport();
+  document.querySelector('#errorPanel').hidden = true;
+  beginDrawingLoad(); setLoading(true); shell?.toggleFinish(false);
+  if (phoneViewport.matches) setFileSidebarVisible(false);
+  return request;
+}
+
+function completeOpen() {
+  const source = fileSession.active?.source;
+  if (!source) return;
+  currentName = source.name; loadedName = source.name; openError = '';
+  setLoading(false);
+  if (source.file) window.cadViewerDrawingList?.openLocal(source.name, source.file);
+  else window.cadViewerDrawingList?.openUrl(source.url);
+  shell?.sync();
+}
+
+function failOpen(error) {
+  openError = error instanceof Error ? error.message : String(error);
+  worker?.terminate(); worker = undefined;
+  finishDrawingLoad(); setLoading(false); openButton.disabled = false;
+  setStatus('openFailed',{message:openError});
+  document.querySelector('#errorMessage').textContent = openError;
+  document.querySelector('#errorPanel').hidden = false;
+  document.querySelector('#retryButton').hidden = !lastSource;
+  if (!drawingComplete) hasOpenedFile = false;
+  else if (activeRenderer === 'cad') bindCanvasInteractions();
+  else setDrawingInteractionControls(true);
+  if (drawingComplete) currentName = loadedName;
+  setLoading(false); shell?.sync();
+}
+
+function cancelOpen() {
+  fileSession.cancel(); loadGeneration++; worker?.terminate(); worker = undefined; modelViewer.cancelImport();
+  if (!drawingComplete) {hasOpenedFile=false;modelViewer.clear();resetViewer();}
+  finishDrawingLoad(); setLoading(false);openButton.disabled=false;openError='';
+  document.querySelector('#errorPanel').hidden=true;
+  if(drawingComplete){if(activeRenderer==='cad')bindCanvasInteractions();else setDrawingInteractionControls(true);}
+  setStatus('cancelled');shell?.sync();
+  currentName = drawingComplete ? loadedName : '';shell?.sync();
 }
 
 function onCanvasWheel(event) {
@@ -1521,10 +1598,12 @@ toolBackgroundButton.addEventListener('click', () => {
       : '#090b0e';
     toolBackgroundButton.classList.toggle('is-active', modelBackgroundColor !== '#090b0e');
     modelViewer.setBackground(modelBackgroundColor);
+    savePreferences({modelLight:modelBackgroundColor !== '#090b0e'});shell?.sync();
     return;
   }
   backgroundColor = backgroundColor === '#090b0e' ? '#f8fafc' : '#090b0e';
   toolBackgroundButton.classList.toggle('is-active', backgroundColor !== '#090b0e');
+  savePreferences({cadLight:backgroundColor !== '#090b0e'});shell?.sync();
   scheduleRender();
 });
 fileInput.addEventListener('change', () => {
@@ -1561,16 +1640,32 @@ document.querySelector('#predefinedFileList').addEventListener('click', (event) 
     return;
   }
   if (button.dataset.localHistory === 'true') {
-    const name = button.title || button.textContent || t('drawingFile');
-    const message = t('localHistoryUnavailable', { name });
-    setStatus('openFailed', { message });
-    window.alert(message);
+    const name = button.dataset.fileName;
+    const local = window.cadViewerDrawingList?.getLocal(name);
+    if (local) openFile(local);
+    else fileInput.click();
   }
 });
 fitButton.addEventListener('click', fitView);
 canvas.addEventListener('pointerdown', onCanvasLoadingPointerDown);
 canvas.addEventListener('wheel', onCanvasLoadingWheel, { passive: false });
 window.addEventListener('resize', resize);
+canvas.addEventListener('dblclick',()=>{if(canvasInteractionsBound)fitView();});
+function workspaceState() {
+  return {name:currentName,format:currentName.split('.').pop()?.toUpperCase(),renderer:activeRenderer,
+    loading:drawingLoadActive,error:openError,ready:drawingComplete&&!drawingLoadActive,
+    mode:interactionMode,light:(activeRenderer==='model'?modelBackgroundColor:backgroundColor)!=='#090b0e',
+    camera:activeRenderer==='model'?{yaw:modelViewer.yaw,pitch:modelViewer.pitch,distance:modelViewer.distance}:camera?{...camera}:null};
+}
+function setStandardView(view) {if(workspaceState().ready&&activeRenderer==='model')modelViewer.setView(view);}
+shell=createWorkspaceShell({t,state:workspaceState,fit:()=>{if(workspaceState().ready)fitView();},mode:setInteractionMode,
+  zoom:zoomBy,view:setStandardView,resize,sidebar:visible=>setFileSidebarVisible(visible??fileSidebarColumn.classList.contains('is-hidden')),
+  sidebarOnMobile:visible=>{if(phoneViewport.matches)setFileSidebarVisible(visible);},
+  background:()=>toolBackgroundButton.click(),openPicker:()=>fileInput.click(),cancel:cancelOpen,
+  retry:()=>{if(lastSource?.file)openFile(lastSource.file);else if(lastSource?.url)openUrl(lastSource.url);},
+  dismissError:()=>{document.querySelector('#errorPanel').hidden=true;openError='';shell.sync();}});
+window.cadViewer={version:'20261012-workspace-1',getState:workspaceState,openUrl,openFile,cancel:cancelOpen,
+  fit:()=>{if(workspaceState().ready)fitView();},zoom:zoomBy,setView:setStandardView};
 applyLanguage();
 resetViewer();
 resize();

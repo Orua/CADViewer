@@ -970,7 +970,7 @@ export class ModelViewer3D {
     this.canvas.addEventListener('pointermove', (event) => this.onPointerMove(event));
     this.canvas.addEventListener('pointerup', (event) => this.onPointerUp(event));
     this.canvas.addEventListener('pointercancel', (event) => this.onPointerUp(event));
-    this.canvas.addEventListener('dblclick', () => this.fit());
+    this.canvas.addEventListener('dblclick', () => { if (this.enabled) this.fit(); });
   }
 
   setVisible(visible) {
@@ -1128,6 +1128,14 @@ export class ModelViewer3D {
     this.panX = 0;
     this.panY = 0;
     this.requestDraw();
+  }
+
+  setView(view) {
+    if (!this.enabled || !this.geometry) return;
+    const angles = {iso:[-Math.PI/4,Math.PI/7],front:[0,0],top:[0,Math.PI/2],right:[-Math.PI/2,0]};
+    if (!angles[view]) return;
+    [this.yaw,this.pitch] = angles[view];
+    this.fit();
   }
 
   onWheel(event) {
