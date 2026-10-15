@@ -1,5 +1,5 @@
 ﻿const DEFAULT_MODEL_COLOR = [0.36, 0.65, 0.93];
-import { PRODUCT_STUDIO_SHADER } from './product-studio.js?v=20261015-side-studio-1';
+import { PRODUCT_STUDIO_SHADER } from './product-studio.js?v=20261015-metal-r3';
 import { repairExtrusionNormals } from './extrusion-normals.js?v=20260910-3';
 import { buildSurfaceBoundaryCoordinates } from './surface-boundaries.js?v=20261010-1';
 import { METAL_OCCLUSION_PROFILE, MetalOcclusionDepth, metalOcclusionShader } from './metal-occlusion.js?v=20261015-1';
@@ -529,6 +529,10 @@ function createProgram(gl) {
     'uniform float uRoughness;',
     'uniform float uReflectionStrength;',
     'uniform float uMetalBodyTint;',
+    'uniform float uCoat;',
+    'uniform float uAnisotropy;',
+    'uniform float uHueKeep;',
+    'uniform float uDepth;',
     'uniform float uAntiqueStrength;',
     'uniform vec3 uPatinaColor;',
     'uniform float uModelRadius;',
@@ -596,7 +600,7 @@ function createProgram(gl) {
     '  return mix(studioLevel(uv, low), studioLevel(uv, min(low + 1.0, 8.0)), fract(lod));',
     '}',
     'vec3 studioEnvironment(vec3 direction) {',
-    '  return productStudioRadiance(direction,uRoughness,normalize(vec3(-0.8214,0.4226,0.3830)),vec3(1.0));',
+    '  return productStudioRadiance(direction,uRoughness,uAnisotropy,normalize(vec3(-0.8214,0.4226,0.3830)),vec3(1.0));',
     '}',
     'vec3 sampleAntiqueAtlas(vec2 coordinates) {',
     // Mirrored repetition makes opposite texture edges meet with the same
@@ -629,8 +633,11 @@ function createProgram(gl) {
     '  vec3 environment = studioEnvironment(reflectionDirection);',
     '  environment = mix(environment, vec3(0.50, 0.52, 0.55), clamp(roughness * roughness * 3.1, 0.0, 0.88) * (1.0 - uStudioReady));',
     '  vec3 edgeFresnel = fresnelSchlick(nDotV, metalF0);',
-    '  vec3 metalSurface = productStudioSpecular(normal,viewDirection,metalF0,roughness,lightDirection,vec3(1.0),vStudioPoint)*uReflectionStrength;',
-    '  metalSurface += metalF0 * 0.012;',
+    '  vec3 metalSurface = productStudioSpecular(normal,viewDirection,metalF0,roughness,uAnisotropy,lightDirection,vec3(1.0),vStudioPoint)*uReflectionStrength;',
+    '  float metalSpecLuma = dot(metalSurface, vec3(0.2126, 0.7152, 0.0722));',
+    '  metalSurface *= pow(max(metalF0, vec3(0.02)), vec3(uDepth * (1.0 - smoothstep(0.35, 1.8, metalSpecLuma))));',
+    '  if (uCoat > 0.0) { float coatFresnel; vec3 coatLight = productStudioCoat(normal,viewDirection,lightDirection,vec3(1.0),vStudioPoint,coatFresnel); metalSurface = metalSurface * (1.0 - coatFresnel * uCoat) + coatLight * uCoat; }',
+    '  metalSurface += metalF0 * uMetalBodyTint;',
     // Antique finishes use stable object-space variation, so the aged marks
     // remain attached to the product while it rotates instead of shimmering.
     '  vec3 antiquePoint = vObjectPosition / max(uModelRadius, 0.001);',
@@ -666,7 +673,7 @@ function createProgram(gl) {
     '  float textureMean = mix(0.34, 0.57, step(0.25, uAntiqueAtlasOffset));',
     '  float materialVariation = clamp(pow(max(textureLuma / textureMean, 0.05), 0.62), 0.48, 1.38);',
     '  float exposedHighlight = smoothstep(0.42, 0.92, nDotL) * (1.0 - patina);',
-    '  vec3 wornReflection = productStudioRadiance(reflectionDirection,0.48,lightDirection,vec3(1.0)) * edgeFresnel * uReflectionStrength;',
+    '  vec3 wornReflection = productStudioRadiance(reflectionDirection,0.48,0.0,lightDirection,vec3(1.0)) * edgeFresnel * uReflectionStrength;',
     '  float wear = smoothstep(0.20, 0.70, antiqueCloud * 0.6 + antiqueStreak * 0.4);',
     '  vec3 agedMetal = mix(metalSurface, wornReflection, wear * uStudioReady * 0.25) * mix(0.98, 0.62, patina);',
     '  agedMetal *= mix(1.0, materialVariation, 0.72);',
@@ -698,6 +705,9 @@ function createProgram(gl) {
     // ACES can clip bright HDR reflections to white after physical occlusion.
     // Retain bounded local recess contrast; unoccluded planes remain unchanged.
     '  vec3 toneMapped = acesToneMap(shaded);',
+    '  float hdrPeak = max(max(shaded.r, shaded.g), max(shaded.b, 1e-4));',
+    '  vec3 hueTone = shaded * (acesToneMap(vec3(hdrPeak)).r / hdrPeak);',
+    '  toneMapped = mix(toneMapped, hueTone, uHueKeep);',
     '  toneMapped *= mix(1.0, cavityFactor, metalness * 0.65);',
     '  gl_FragColor = vec4(linearToSrgb(toneMapped), 1.0);',
     '}',
@@ -900,10 +910,14 @@ export class ModelViewer3D {
     this.touchPointers = new Map();
     this.pinch = null;
     this.metalFinish = {
-      color: [0.82, 0.58, 0.24],
-      roughness: 0.105,
-      reflectionStrength: 1.28,
-      metalBodyTint: 0.055,
+      color: [1.00, 0.69, 0.25],
+      roughness: 0.14,
+      reflectionStrength: 1.08,
+      metalBodyTint: 0.012,
+      coat: 0.45,
+      anisotropy: 0,
+      hueKeep: 0,
+      depth: 0,
       antiqueStrength: 0,
       patinaColor: [0.04, 0.03, 0.02],
       antiqueAtlasOffset: 0,
@@ -949,6 +963,10 @@ export class ModelViewer3D {
       roughness: this.gl.getUniformLocation(this.program, 'uRoughness'),
       reflectionStrength: this.gl.getUniformLocation(this.program, 'uReflectionStrength'),
       metalBodyTint: this.gl.getUniformLocation(this.program, 'uMetalBodyTint'),
+      coat: this.gl.getUniformLocation(this.program, 'uCoat'),
+      anisotropy: this.gl.getUniformLocation(this.program, 'uAnisotropy'),
+      hueKeep: this.gl.getUniformLocation(this.program, 'uHueKeep'),
+      depth: this.gl.getUniformLocation(this.program, 'uDepth'),
       antiqueStrength: this.gl.getUniformLocation(this.program, 'uAntiqueStrength'),
       patinaColor: this.gl.getUniformLocation(this.program, 'uPatinaColor'),
       modelRadius: this.gl.getUniformLocation(this.program, 'uModelRadius'),
@@ -1024,7 +1042,11 @@ export class ModelViewer3D {
       color: color.length === 3 && color.every(Number.isFinite) ? color.map((value) => clamp(value, 0, 1)) : this.metalFinish.color,
       roughness: clamp(Number(finish.roughness) || this.metalFinish.roughness, 0.06, 0.62),
       reflectionStrength: clamp(Number(finish.reflectionStrength) || this.metalFinish.reflectionStrength, 0.25, 1.6),
-      metalBodyTint: clamp(Number(finish.metalBodyTint) || 0.055, 0.02, 0.2),
+      metalBodyTint: clamp(Number.isFinite(Number(finish.metalBodyTint)) ? Number(finish.metalBodyTint) : 0.012, 0, 0.2),
+      coat: clamp(Number.isFinite(Number(finish.coat)) ? Number(finish.coat) : 0, 0, 1),
+      anisotropy: clamp(Number.isFinite(Number(finish.anisotropy)) ? Number(finish.anisotropy) : 0, 0, 1),
+      hueKeep: clamp(Number.isFinite(Number(finish.hueKeep)) ? Number(finish.hueKeep) : 0, 0, 1),
+      depth: clamp(Number.isFinite(Number(finish.depth)) ? Number(finish.depth) : 0, 0, 3),
       antiqueStrength: clamp(Number(finish.antiqueStrength) || 0, 0, 1),
       antiqueAtlasOffset: clamp(Number(finish.antiqueAtlasOffset) || 0, 0, 0.5),
       antiqueTextureScale: clamp(Number(finish.antiqueTextureScale) || 1.35, 0.5, 6),
@@ -1382,6 +1404,10 @@ export class ModelViewer3D {
     gl.uniform1f(this.locations.roughness, this.metalFinish.roughness);
     gl.uniform1f(this.locations.reflectionStrength, this.metalFinish.reflectionStrength);
     gl.uniform1f(this.locations.metalBodyTint, this.metalFinish.metalBodyTint);
+    gl.uniform1f(this.locations.coat, this.metalFinish.coat);
+    gl.uniform1f(this.locations.anisotropy, this.metalFinish.anisotropy);
+    gl.uniform1f(this.locations.hueKeep, this.metalFinish.hueKeep);
+    gl.uniform1f(this.locations.depth, this.metalFinish.depth);
     gl.uniform1f(this.locations.antiqueStrength, this.metalFinish.antiqueStrength);
     gl.uniform3fv(this.locations.patinaColor, this.metalFinish.patinaColor);
     gl.uniform1f(this.locations.modelRadius, this.geometry.radius);

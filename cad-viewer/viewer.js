@@ -1,5 +1,5 @@
 ﻿const canvas = document.querySelector('#fastCanvas');
-import { ModelViewer3D } from './model-viewer.js?v=20261015-side-studio-2';
+import { ModelViewer3D } from './model-viewer.js?v=20261015-metal-r3';
 import {FileSession, sameOriginFileUrl} from './file-session.js?v=20261012-workspace-1';
 import {SHELL_MESSAGES, createWorkspaceShell, readPreferences, savePreferences} from './viewer-shell.js?v=20261015-side-studio-2';
 
@@ -204,14 +204,14 @@ const MODEL_FORMATS = new Map([
 ]);
 
 const METAL_FINISHES = Object.freeze({
-  'light-gold': { color: [0.82, 0.58, 0.24], roughness: 0.105, reflectionStrength: 1.28 },
-  nickel: { color: [0.72, 0.74, 0.76], roughness: 0.12, reflectionStrength: 1.22 },
-  '24k-gold': { color: [0.88, 0.49, 0.10], roughness: 0.14, reflectionStrength: 1.08, metalBodyTint: 0.13 },
-  gunmetal: { color: [0.18, 0.21, 0.24], roughness: 0.15, reflectionStrength: 1.18 },
-  'matt-nickel': { color: [0.62, 0.64, 0.66], roughness: 0.60, reflectionStrength: 0.48 },
-  'matt-light-gold': { color: [0.70, 0.48, 0.21], roughness: 0.59, reflectionStrength: 0.50 },
-  'matt-24k-gold': { color: [0.90, 0.55, 0.12], roughness: 0.58, reflectionStrength: 0.52 },
-  'matt-gunmetal': { color: [0.15, 0.17, 0.19], roughness: 0.62, reflectionStrength: 0.46 },
+  'light-gold': { color: [1.00, 0.69, 0.25], roughness: 0.14, reflectionStrength: 1.08, metalBodyTint: 0.13, coat: 0.45 },
+  nickel: { color: [0.76, 0.76, 0.76], roughness: 0.12, reflectionStrength: 1.22, coat: 0.15 },
+  '24k-gold': { color: [1.00, 0.75, 0.30], roughness: 0.14, reflectionStrength: 1.0, metalBodyTint: 0.13, coat: 0.12, hueKeep: 0.85, depth: 0.95 },
+  gunmetal: { color: [0.18, 0.21, 0.24], roughness: 0.15, reflectionStrength: 1.18, coat: 0.35 },
+  'matt-nickel': { color: [0.62, 0.64, 0.66], roughness: 0.60, reflectionStrength: 0.48, anisotropy: 0.35 },
+  'matt-light-gold': { color: [0.70, 0.48, 0.21], roughness: 0.59, reflectionStrength: 0.50, anisotropy: 0.35 },
+  'matt-24k-gold': { color: [1.00, 0.72, 0.27], roughness: 0.58, reflectionStrength: 0.78, anisotropy: 0.35, hueKeep: 0.6, depth: 0.5 },
+  'matt-gunmetal': { color: [0.15, 0.17, 0.19], roughness: 0.62, reflectionStrength: 0.46, anisotropy: 0.35 },
   'antique-brass': {
     color: [0.46, 0.29, 0.075],
     roughness: 0.60,
@@ -1676,7 +1676,7 @@ shell=createWorkspaceShell({t,state:workspaceState,fit:()=>{if(workspaceState().
   background:()=>toolBackgroundButton.click(),openPicker:()=>fileInput.click(),cancel:cancelOpen,
   retry:()=>{if(lastSource?.file)openFile(lastSource.file);else if(lastSource?.url)openUrl(lastSource.url);},
   dismissError:()=>{document.querySelector('#errorPanel').hidden=true;openError='';shell.sync();}});
-window.cadViewer={version:'20261015-side-studio-2',getState:workspaceState,openUrl,openFile,cancel:cancelOpen,setSurfaceEdges,
+window.cadViewer={version:'20261015-metal-r3',getState:workspaceState,openUrl,openFile,cancel:cancelOpen,setSurfaceEdges,
   fit:()=>{if(workspaceState().ready)fitView();},zoom:zoomBy,setView:setStandardView};
 applyLanguage();
 resetViewer();
