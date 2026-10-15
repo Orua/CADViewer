@@ -22,15 +22,21 @@ This feature is for visual communication only. It does not replace an approved p
 
 For supported long, axis-aligned extruded faces, a guarded display-normal correction uses repeated cross-sections and local curve fitting to reduce reflection ripples. Other faces retain their imported normals; vertices and source CAD files remain unchanged.
 
-Metal rendering retains CAD face adjacency to add subtle, subpixel boundaries at open edges, creases above 20 degrees and imported colour transitions. Internal tessellation diagonals and tangent fillet seams remain hidden. The boundary is depth-tested inside the surface shader, so it does not expose hidden edges or draw a black wireframe. Devices without standard WebGL derivatives retain the normal metal shading.
+Metal rendering retains CAD face adjacency to add subtle, subpixel boundaries at open edges, creases above 20 degrees and imported colour transitions. Internal tessellation diagonals and tangent fillet seams remain hidden. The boundary is depth-tested inside the surface shader, so it does not expose hidden edges or draw a black wireframe. Appearance > Soft edges can hide these boundaries independently of recess shading; `ModelViewer3D.setSurfaceEdges(boolean)` uses the same operation. Devices without standard WebGL derivatives retain the normal metal shading.
 
 金属显示保留 CAD 面邻接信息，在开口、超过 20 度的折角和导入颜色交界处添加低对比细边界。三角剖分内部线和相切圆角接缝保持隐藏；边界在表面着色器中参与深度测试，不显示遮挡边。缺少标准 WebGL 导数扩展的设备继续使用原有金属着色。
 
+Metal recesses use a packed linear-depth prepass and sixteen nearby screen-space samples (eight directions, two rings). Only geometry above the current surface plane contributes to occlusion. A finite distance falloff and rejected background samples avoid drawing a halo around silhouettes. The profile is shared with WebCAD: model-radius ratio 0.035, angular bias 0.06, strength 1.5, minimum visibility 0.42. Occlusion affects the metal lighting before tone mapping and works with boundaries hidden; it neither changes CAD geometry nor paints a guessed colour onto logo faces. Sampling is limited to a 32-pixel radius. Off-screen and hidden geometry cannot contribute, so this is a real-time approximation rather than ray-traced lighting. Devices without high-precision fragment shaders or a complete render target keep the existing material shading.
+
+金属凹槽采用真实网格深度的局部遮蔽，让凹字底部与邻近槽壁获得适度暗部。外观面板的“柔和边线”可以独立关闭，凹槽明暗继续保留。此效果不会修改 LOGO、几何、法线或源文件；屏幕外及被完全遮挡的表面不参与计算，不等同于完整光线追踪。
+
+The page API `window.cadViewer.setSurfaceEdges(false)` calls the same persisted operation as the checkbox. Its argument must be a boolean or it throws `TypeError`; the result reports `surfaceEdges` and depth-occlusion availability. `window.cadViewer.getState()` also reports `surfaceEdges` and `recessShading` so agents can read back the active display state. No model revision, file bytes or export changes are involved.
+
 对于符合条件的轴向长拉伸面，查看器通过重复截面和局部曲线拟合修正显示法线，减少反光波纹。其他面保留导入法线，不改变顶点或原始 CAD 文件。
 
-The viewer bundles a 1K studio HDR environment, decoded into a WebGL-compatible texture. Roughness controls explicit interpolation between guttered atlas levels, without screen-derivative LOD or texture-LOD extensions. Longitude gutters wrap continuously; texture uploads explicitly reset vertical-flip state. Imported CAD normals are retained rather than re-averaged from tessellation. Antique finishes combine the supplied texture with spatially varied polished reflections. No external rendering service or CAD geometry edits are involved; ground contact shadows and path-traced self-reflections are not implemented.
+The default product studio uses camera-space side softboxes, a rear rim and a dark flag. Its analytic radiance and split-sum metallic BRDF are shared with WebCAD, so it does not download the old HDR for default rendering. The retained HDR decoder supports legacy source compatibility. Roughness controls explicit interpolation between guttered atlas levels, without screen-derivative LOD or texture-LOD extensions. Longitude gutters wrap continuously; texture uploads explicitly reset vertical-flip state. Imported CAD normals are retained rather than re-averaged from tessellation. Antique finishes combine the supplied texture with spatially varied polished reflections. No external rendering service or CAD geometry edits are involved; ground contact shadows and path-traced self-reflections are not implemented.
 
-查看器内置 1K 摄影棚 HDR 环境并解码为 WebGL 兼容纹理。粗糙度控制带边缘保护像素的图集层级插值，不依赖屏幕导数或纹理层级扩展；经度接缝连续，上传纹理时明确还原垂直翻转状态。保留 CAD 导入法线，不再按三角网格重新平均。仿古效果结合参考纹理与局部磨亮反射。不调用外部渲染服务，不改 CAD 几何；目前未实现地面接触阴影或路径追踪自身反射。
+默认产品摄影棚采用相机侧上方长条柔光箱、背侧轮廓光和下方暗反射区；与 WebCAD 共用同一反射和金属 BRDF 规则，默认不下载旧 HDR。粗糙度控制带边缘保护像素的图集层级插值，不依赖屏幕导数或纹理层级扩展；经度接缝连续，上传纹理时明确还原垂直翻转状态。保留 CAD 导入法线，不再按三角网格重新平均。仿古效果结合参考纹理与局部磨亮反射。不调用外部渲染服务，不改 CAD 几何；目前未实现地面接触阴影或路径追踪自身反射。
 
 此功能仅用于视觉沟通，不能替代批准实体样、电镀或 PVD 规格、颜色公差、镀层厚度或量产验收标准。
 

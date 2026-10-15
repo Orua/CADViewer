@@ -1,7 +1,7 @@
 ﻿const canvas = document.querySelector('#fastCanvas');
-import { ModelViewer3D } from './model-viewer.js?v=20261012-workspace-1';
+import { ModelViewer3D } from './model-viewer.js?v=20261015-side-studio-2';
 import {FileSession, sameOriginFileUrl} from './file-session.js?v=20261012-workspace-1';
-import {SHELL_MESSAGES, createWorkspaceShell, readPreferences, savePreferences} from './viewer-shell.js?v=20261012-workspace-1';
+import {SHELL_MESSAGES, createWorkspaceShell, readPreferences, savePreferences} from './viewer-shell.js?v=20261015-side-studio-2';
 
 const context = canvas.getContext('2d', { alpha: false });
 const modelCanvas = document.querySelector('#modelCanvas');
@@ -27,6 +27,7 @@ const loadingInteractionHint = document.querySelector('#loadingInteractionHint')
 const viewerPane = document.querySelector('#viewerPane');
 const metalFinishPanel = document.querySelector('#metalFinishPanel');
 const metalFinishButtons = [...document.querySelectorAll('[data-metal-finish]')];
+const modelEdgesToggle = document.querySelector('#modelEdgesToggle');
 
 const requestedOpenMode = new URLSearchParams(window.location.search).get('open');
 if (requestedOpenMode === 'cad') {
@@ -252,6 +253,16 @@ for (const button of metalFinishButtons) {
   button.addEventListener('click', () => selectMetalFinish(button.dataset.metalFinish));
 }
 selectMetalFinish(METAL_FINISHES[preferences.finish] ? preferences.finish : 'light-gold');
+modelEdgesToggle.checked = preferences.surfaceEdges !== false;
+modelViewer.setSurfaceEdges(modelEdgesToggle.checked);
+function setSurfaceEdges(visible) {
+  if (typeof visible !== 'boolean') throw new TypeError('surfaceEdges must be a boolean');
+  const state = modelViewer.setSurfaceEdges(visible);
+  modelEdgesToggle.checked = visible;
+  savePreferences({ surfaceEdges: visible });
+  return state;
+}
+modelEdgesToggle.addEventListener('change', () => setSurfaceEdges(modelEdgesToggle.checked));
 
 function activateRenderer(renderer) {
   activeRenderer = renderer;
@@ -1655,6 +1666,7 @@ function workspaceState() {
   return {name:currentName,format:currentName.split('.').pop()?.toUpperCase(),renderer:activeRenderer,
     loading:drawingLoadActive,error:openError,ready:drawingComplete&&!drawingLoadActive,
     mode:interactionMode,light:(activeRenderer==='model'?modelBackgroundColor:backgroundColor)!=='#090b0e',
+    surfaceEdges:modelViewer.surfaceEdges,recessShading:modelViewer.occlusionDepth.available,
     camera:activeRenderer==='model'?{yaw:modelViewer.yaw,pitch:modelViewer.pitch,distance:modelViewer.distance}:camera?{...camera}:null};
 }
 function setStandardView(view) {if(workspaceState().ready&&activeRenderer==='model')modelViewer.setView(view);}
@@ -1664,7 +1676,7 @@ shell=createWorkspaceShell({t,state:workspaceState,fit:()=>{if(workspaceState().
   background:()=>toolBackgroundButton.click(),openPicker:()=>fileInput.click(),cancel:cancelOpen,
   retry:()=>{if(lastSource?.file)openFile(lastSource.file);else if(lastSource?.url)openUrl(lastSource.url);},
   dismissError:()=>{document.querySelector('#errorPanel').hidden=true;openError='';shell.sync();}});
-window.cadViewer={version:'20261012-workspace-1',getState:workspaceState,openUrl,openFile,cancel:cancelOpen,
+window.cadViewer={version:'20261015-side-studio-2',getState:workspaceState,openUrl,openFile,cancel:cancelOpen,setSurfaceEdges,
   fit:()=>{if(workspaceState().ready)fitView();},zoom:zoomBy,setView:setStandardView};
 applyLanguage();
 resetViewer();

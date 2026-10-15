@@ -1,6 +1,8 @@
 ﻿const DEFAULT_MODEL_COLOR = [0.36, 0.65, 0.93];
+import { PRODUCT_STUDIO_SHADER } from './product-studio.js?v=20261015-side-studio-1';
 import { repairExtrusionNormals } from './extrusion-normals.js?v=20260910-3';
 import { buildSurfaceBoundaryCoordinates } from './surface-boundaries.js?v=20261010-1';
+import { METAL_OCCLUSION_PROFILE, MetalOcclusionDepth, metalOcclusionShader } from './metal-occlusion.js?v=20261015-1';
 // Creo's ordinary shaded view is a light, neutral engineering viewport.
 // Keep this independent from the 2D drawing canvas' dark-mode preference.
 const CREO_MODEL_BACKGROUND = '#eef0f4';
@@ -490,9 +492,11 @@ function createProgram(gl) {
     'varying vec3 vViewPosition;',
     'varying vec3 vObjectPosition;',
     'varying vec3 vObjectNormal;',
+    'varying vec3 vStudioPoint;',
     'uniform vec3 uMetalColor;',
     'uniform float uRoughness;',
     'uniform float uReflectionStrength;',
+    'uniform float uModelRadius;',
     'void main(void) {',
     '  vNormal = normalize(uNormalMatrix * aNormal);',
     '  vColor = aColor;',
@@ -500,6 +504,7 @@ function createProgram(gl) {
     '  vSurfaceBoundary = aSurfaceBoundary;',
     '  vObjectPosition = aPosition;',
     '  vObjectNormal = aNormal;',
+    '  vStudioPoint = mat3(uView*uModel)*aPosition/max(uModelRadius,0.001);',
     '  vec4 viewPosition = uView * uModel * vec4(aPosition, 1.0);',
     '  vViewPosition = viewPosition.xyz;',
     '  gl_Position = uProjection * viewPosition;',
@@ -519,6 +524,7 @@ function createProgram(gl) {
     'varying vec3 vViewPosition;',
     'varying vec3 vObjectPosition;',
     'varying vec3 vObjectNormal;',
+    'varying vec3 vStudioPoint;',
     'uniform vec3 uMetalColor;',
     'uniform float uRoughness;',
     'uniform float uReflectionStrength;',
@@ -532,6 +538,9 @@ function createProgram(gl) {
     'uniform float uAntiquePitStrength;',
     'uniform sampler2D uStudioTexture;',
     'uniform float uStudioReady;',
+    'uniform float uSurfaceEdges;',
+    metalOcclusionShader,
+    PRODUCT_STUDIO_SHADER,
     'vec3 linearToSrgb(vec3 color) {',
     '  return pow(clamp(color, 0.0, 1.0), vec3(1.0 / 2.2));',
     '}',
@@ -587,23 +596,7 @@ function createProgram(gl) {
     '  return mix(studioLevel(uv, low), studioLevel(uv, min(low + 1.0, 8.0)), fract(lod));',
     '}',
     'vec3 studioEnvironment(vec3 direction) {',
-    '  if (uStudioReady > 0.5) {',
-    '    return studioSample(direction, uRoughness);',
-    '  }',
-    '  float height = direction.y * 0.5 + 0.5;',
-    '  vec3 environment = mix(vec3(0.018, 0.022, 0.032), vec3(0.62, 0.68, 0.78), smoothstep(0.08, 0.92, height));',
-    // Broad white cards make the long flowing reflections seen in product
-    // photography; slim black flags provide the contrasting dark streaks.
-    '  float topCard = smoothstep(0.38, 0.78, direction.y) * (1.0 - smoothstep(0.52, 0.92, abs(direction.x)));',
-    '  float leftCard = smoothstep(0.28, 0.82, -direction.x) * (1.0 - smoothstep(0.42, 0.90, abs(direction.y - 0.10)));',
-    '  float frontCard = pow(max(direction.z, 0.0), 18.0);',
-    '  float blackFlagA = (1.0 - smoothstep(0.035, 0.16, abs(direction.x + 0.34))) * smoothstep(-0.45, 0.55, direction.y);',
-    '  float blackFlagB = (1.0 - smoothstep(0.025, 0.12, abs(direction.x - 0.48))) * smoothstep(-0.20, 0.72, direction.y);',
-    '  environment += vec3(1.35, 1.30, 1.18) * topCard;',
-    '  environment += vec3(0.95, 1.00, 1.08) * leftCard;',
-    '  environment += vec3(0.80) * frontCard;',
-    '  environment *= 1.0 - 0.88 * max(blackFlagA, blackFlagB);',
-    '  return environment;',
+    '  return productStudioRadiance(direction,uRoughness,normalize(vec3(-0.8214,0.4226,0.3830)),vec3(1.0));',
     '}',
     'vec3 sampleAntiqueAtlas(vec2 coordinates) {',
     // Mirrored repetition makes opposite texture edges meet with the same
@@ -621,7 +614,7 @@ function createProgram(gl) {
     '  vec3 inputColor = max(vColor, vec3(0.0));',
     '  vec3 metalF0 = uMetalColor;',
     '  vec3 viewDirection = normalize(-vViewPosition);',
-    '  vec3 lightDirection = normalize(vec3(0.42, 0.72, 0.55));',
+    '  vec3 lightDirection = normalize(vec3(-0.8214, 0.4226, 0.3830));',
     '  vec3 halfVector = normalize(viewDirection + lightDirection);',
     '  float nDotV = max(dot(normal, viewDirection), 0.001);',
     '  float nDotL = max(dot(normal, lightDirection), 0.0);',
@@ -636,8 +629,8 @@ function createProgram(gl) {
     '  vec3 environment = studioEnvironment(reflectionDirection);',
     '  environment = mix(environment, vec3(0.50, 0.52, 0.55), clamp(roughness * roughness * 3.1, 0.0, 0.88) * (1.0 - uStudioReady));',
     '  vec3 edgeFresnel = fresnelSchlick(nDotV, metalF0);',
-    '  vec3 metalSurface = environment * edgeFresnel * uReflectionStrength + directSpecular * nDotL * vec3(2.8, 2.65, 2.35) * uReflectionStrength * 0.78 * (1.0 - uStudioReady);',
-    '  metalSurface += metalF0 * uMetalBodyTint;',
+    '  vec3 metalSurface = productStudioSpecular(normal,viewDirection,metalF0,roughness,lightDirection,vec3(1.0),vStudioPoint)*uReflectionStrength;',
+    '  metalSurface += metalF0 * 0.012;',
     // Antique finishes use stable object-space variation, so the aged marks
     // remain attached to the product while it rotates instead of shimmering.
     '  vec3 antiquePoint = vObjectPosition / max(uModelRadius, 0.001);',
@@ -673,7 +666,7 @@ function createProgram(gl) {
     '  float textureMean = mix(0.34, 0.57, step(0.25, uAntiqueAtlasOffset));',
     '  float materialVariation = clamp(pow(max(textureLuma / textureMean, 0.05), 0.62), 0.48, 1.38);',
     '  float exposedHighlight = smoothstep(0.42, 0.92, nDotL) * (1.0 - patina);',
-    '  vec3 wornReflection = studioSample(reflectionDirection, 0.48) * edgeFresnel * uReflectionStrength;',
+    '  vec3 wornReflection = productStudioRadiance(reflectionDirection,0.48,lightDirection,vec3(1.0)) * edgeFresnel * uReflectionStrength;',
     '  float wear = smoothstep(0.20, 0.70, antiqueCloud * 0.6 + antiqueStreak * 0.4);',
     '  vec3 agedMetal = mix(metalSurface, wornReflection, wear * uStudioReady * 0.25) * mix(0.98, 0.62, patina);',
     '  agedMetal *= mix(1.0, materialVariation, 0.72);',
@@ -686,6 +679,9 @@ function createProgram(gl) {
     '  vec3 satin = metalF0 * (0.32 + 0.30 * max(normal.y, 0.0) + 0.22 * nDotL);',
     '  satin *= 0.97 + 0.06 * antiqueNoise(antiquePoint * 160.0);',
     '  metalSurface = mix(metalSurface, satin, haze);',
+    // Occlusion follows nearby mesh depth, independent of CAD edge visibility.
+    '  float cavityFactor = metalOcclusion(normal);',
+    '  metalSurface *= cavityFactor;',
     '  float diffuse = max(dot(normal, lightDirection), 0.0);',
     '  float fill = max(dot(normal, normalize(vec3(-0.52, 0.26, 0.48))), 0.0);',
     '  float sky = normal.y * 0.5 + 0.5;',
@@ -697,9 +693,13 @@ function createProgram(gl) {
       '  vec3 boundaryWidth = max(fwidth(vSurfaceBoundary), vec3(0.000001));',
       '  vec3 boundaryBlend = smoothstep(vec3(0.0), boundaryWidth * 0.75, vSurfaceBoundary);',
       '  float surfaceEdge = 1.0 - min(boundaryBlend.x, min(boundaryBlend.y, boundaryBlend.z));',
-      '  shaded *= 1.0 - surfaceEdge * metalness * 0.18;',
+      '  shaded *= 1.0 - surfaceEdge * metalness * 0.08 * uSurfaceEdges;',
     ] : []),
-    '  gl_FragColor = vec4(linearToSrgb(acesToneMap(shaded)), 1.0);',
+    // ACES can clip bright HDR reflections to white after physical occlusion.
+    // Retain bounded local recess contrast; unoccluded planes remain unchanged.
+    '  vec3 toneMapped = acesToneMap(shaded);',
+    '  toneMapped *= mix(1.0, cavityFactor, metalness * 0.65);',
+    '  gl_FragColor = vec4(linearToSrgb(toneMapped), 1.0);',
     '}',
   ].join('\n');
 
@@ -887,6 +887,7 @@ export class ModelViewer3D {
     this.visible = false;
     this.enabled = false;
     this.geometry = null;
+    this.surfaceEdges = true;
     this.mode = 'pan';
     this.yaw = -Math.PI / 4;
     this.pitch = Math.PI / 7;
@@ -922,6 +923,7 @@ export class ModelViewer3D {
     if (!this.gl) fail('当前浏览器或显卡不支持 WebGL。');
 
     this.program = createProgram(this.gl);
+    this.occlusionDepth = new MetalOcclusionDepth(this.gl, compileShader);
     this.positionBuffer = this.gl.createBuffer();
     this.normalBuffer = this.gl.createBuffer();
     this.colorBuffer = this.gl.createBuffer();
@@ -929,10 +931,10 @@ export class ModelViewer3D {
     this.surfaceBoundaryBuffer = this.gl.createBuffer();
     this.antiqueTexture = createAntiqueTexture(this.gl, () => this.requestDraw());
     this.studioTexture = this.gl.createTexture();
-    this.studioReady = 0;
+    this.studioReady = 1;
     this.gl.bindTexture(this.gl.TEXTURE_2D, this.studioTexture);
     this.gl.texImage2D(this.gl.TEXTURE_2D, 0, this.gl.RGBA, 1, 1, 0, this.gl.RGBA, this.gl.UNSIGNED_BYTE, new Uint8Array([128, 128, 128, 255]));
-    loadStudioTexture(this.gl, this.studioTexture).then(() => { this.studioReady = 1; this.requestDraw(); }).catch(() => {});
+    // The calibrated product studio is analytic and needs no HDR download.
     this.locations = {
       position: this.gl.getAttribLocation(this.program, 'aPosition'),
       normal: this.gl.getAttribLocation(this.program, 'aNormal'),
@@ -956,6 +958,13 @@ export class ModelViewer3D {
       antiquePitStrength: this.gl.getUniformLocation(this.program, 'uAntiquePitStrength'),
       studioTexture: this.gl.getUniformLocation(this.program, 'uStudioTexture'),
       studioReady: this.gl.getUniformLocation(this.program, 'uStudioReady'),
+      surfaceEdges: this.gl.getUniformLocation(this.program, 'uSurfaceEdges'),
+      occlusionDepth: this.gl.getUniformLocation(this.program, 'uOcclusionDepth'),
+      occlusionViewport: this.gl.getUniformLocation(this.program, 'uOcclusionViewport'),
+      occlusionProjection: this.gl.getUniformLocation(this.program, 'uOcclusionProjection'),
+      occlusionFar: this.gl.getUniformLocation(this.program, 'uOcclusionFar'),
+      occlusionRadius: this.gl.getUniformLocation(this.program, 'uOcclusionRadius'),
+      occlusionReady: this.gl.getUniformLocation(this.program, 'uOcclusionReady'),
     };
     this.bindEvents();
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -1025,6 +1034,12 @@ export class ModelViewer3D {
         : [0.04, 0.03, 0.02],
     };
     this.requestDraw();
+  }
+
+  setSurfaceEdges(visible) {
+    this.surfaceEdges = Boolean(visible);
+    this.requestDraw();
+    return { surfaceEdges: this.surfaceEdges, occlusion: this.occlusionDepth.available };
   }
 
   clear() {
@@ -1347,6 +1362,18 @@ export class ModelViewer3D {
       model[8], model[9], model[10],
     ]);
 
+    // Keep shallow recesses distinguishable in the 16-bit depth attachment.
+    // Tightening only Z leaves the screen-space XY projection unchanged.
+    const occlusionNear = Math.max(this.distance - this.geometry.radius * 1.05, near);
+    const occlusionFar = Math.max(this.distance + this.geometry.radius * 1.05, occlusionNear + 0.01);
+    const occlusionProjection = mat4Perspective(this.fieldOfView, aspect, occlusionNear, occlusionFar);
+    const occlusionReady = this.occlusionDepth.draw({
+      width: this.canvas.width, height: this.canvas.height,
+      projection: occlusionProjection, view, model, far: occlusionFar,
+      positionBuffer: this.positionBuffer, vertexCount: this.geometry.positions.length / 3,
+    });
+    gl.useProgram(this.program);
+
     gl.uniformMatrix4fv(this.locations.projection, false, projection);
     gl.uniformMatrix4fv(this.locations.view, false, view);
     gl.uniformMatrix4fv(this.locations.model, false, model);
@@ -1368,6 +1395,15 @@ export class ModelViewer3D {
     gl.bindTexture(gl.TEXTURE_2D, this.studioTexture);
     gl.uniform1i(this.locations.studioTexture, 1);
     gl.uniform1f(this.locations.studioReady, this.studioReady);
+    gl.uniform1f(this.locations.surfaceEdges, this.surfaceEdges ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.occlusionDepth.texture);
+    gl.uniform1i(this.locations.occlusionDepth, 2);
+    gl.uniform2f(this.locations.occlusionViewport, this.canvas.width, this.canvas.height);
+    gl.uniform2f(this.locations.occlusionProjection, projection[0], projection[5]);
+    gl.uniform1f(this.locations.occlusionFar, occlusionFar);
+    gl.uniform1f(this.locations.occlusionRadius, this.geometry.radius * METAL_OCCLUSION_PROFILE.radiusRatio);
+    gl.uniform1f(this.locations.occlusionReady, occlusionReady ? 1 : 0);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
     gl.enableVertexAttribArray(this.locations.position);
     gl.vertexAttribPointer(this.locations.position, 3, gl.FLOAT, false, 0, 0);
@@ -1399,5 +1435,7 @@ export class ModelViewer3D {
     this.gl.deleteBuffer(this.surfaceBoundaryBuffer);
     this.gl.deleteProgram(this.program);
     this.gl.deleteTexture(this.studioTexture);
+    this.gl.deleteTexture(this.antiqueTexture);
+    this.occlusionDepth.destroy();
   }
 }
